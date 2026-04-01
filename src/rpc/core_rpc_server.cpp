@@ -951,6 +951,54 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validators(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_bonded_validators);
+    (void)req;
+    if (ctx != NULL)
+      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
+    else
+      res.untrusted = false;
+
+    res.enabled = false;
+    res.reason = "Bonded validator tier is not enabled on this network";
+    res.height = m_core.get_current_blockchain_height();
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validator_status(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_bonded_validator_status);
+    (void)req;
+    if (ctx != NULL)
+      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
+    else
+      res.untrusted = false;
+
+    res.enabled = false;
+    res.reason = "Bonded validator tier is not enabled on this network";
+    res.found = false;
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validator_rewards(const COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_bonded_validator_rewards);
+    if (ctx != NULL)
+      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
+    else
+      res.untrusted = false;
+
+    res.enabled = false;
+    res.reason = "Bonded validator tier is not enabled on this network";
+    res.id = req.id;
+    res.total_amount = 0;
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_indexes(const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request& req, COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_indexes);
@@ -2709,6 +2757,39 @@ namespace cryptonote
   bool core_rpc_server::on_get_info_json(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RPC_GET_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     if (!on_get_info(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validators_json(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_bonded_validators(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validator_status_json(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_bonded_validator_status(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_bonded_validator_rewards_json(const COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_bonded_validator_rewards(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = res.status;

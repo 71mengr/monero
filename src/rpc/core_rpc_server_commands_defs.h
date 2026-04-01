@@ -88,7 +88,7 @@ namespace cryptonote
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define CORE_RPC_VERSION_MAJOR 3
-#define CORE_RPC_VERSION_MINOR 15
+#define CORE_RPC_VERSION_MINOR 16
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
@@ -2791,6 +2791,141 @@ namespace cryptonote
     {
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct bonded_validator_info
+  {
+    std::string id;
+    std::string operator_key;
+    std::string collateral_txid;
+    uint64_t collateral_amount;
+    uint64_t registration_height;
+    uint64_t last_uptime_proof_height;
+    bool active;
+    uint32_t penalty_points;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(id)
+      KV_SERIALIZE(operator_key)
+      KV_SERIALIZE(collateral_txid)
+      KV_SERIALIZE(collateral_amount)
+      KV_SERIALIZE(registration_height)
+      KV_SERIALIZE(last_uptime_proof_height)
+      KV_SERIALIZE(active)
+      KV_SERIALIZE(penalty_points)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_RPC_GET_BONDED_VALIDATORS
+  {
+    struct request_t: public rpc_request_base
+    {
+      bool include_inactive;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE_OPT(include_inactive, false)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool enabled;
+      std::string reason;
+      uint64_t height;
+      std::vector<bonded_validator_info> validators;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(enabled)
+        KV_SERIALIZE(reason)
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(validators)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string id;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(id)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool enabled;
+      std::string reason;
+      bool found;
+      bonded_validator_info validator;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(enabled)
+        KV_SERIALIZE(reason)
+        KV_SERIALIZE(found)
+        KV_SERIALIZE(validator)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string id;
+      uint64_t from_height;
+      uint64_t to_height;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(id)
+        KV_SERIALIZE_OPT(from_height, (uint64_t)0)
+        KV_SERIALIZE_OPT(to_height, (uint64_t)0)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct reward_entry
+    {
+      uint64_t height;
+      uint64_t amount;
+      std::string txid;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(amount)
+        KV_SERIALIZE(txid)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t: public rpc_response_base
+    {
+      bool enabled;
+      std::string reason;
+      std::string id;
+      uint64_t total_amount;
+      std::vector<reward_entry> rewards;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(enabled)
+        KV_SERIALIZE(reason)
+        KV_SERIALIZE(id)
+        KV_SERIALIZE(total_amount)
+        KV_SERIALIZE(rewards)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

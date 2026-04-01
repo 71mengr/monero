@@ -137,6 +137,9 @@ namespace cryptonote
       MAP_URI_AUTO_JON2_IF("/out_peers", on_out_peers, COMMAND_RPC_OUT_PEERS, !m_restricted)
       MAP_URI_AUTO_JON2_IF("/in_peers", on_in_peers, COMMAND_RPC_IN_PEERS, !m_restricted)
       MAP_URI_AUTO_JON2("/get_outs", on_get_outs, COMMAND_RPC_GET_OUTPUTS)      
+      MAP_URI_AUTO_JON2("/get_bonded_validators", on_get_bonded_validators, COMMAND_RPC_GET_BONDED_VALIDATORS)
+      MAP_URI_AUTO_JON2("/get_bonded_validator_status", on_get_bonded_validator_status, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS)
+      MAP_URI_AUTO_JON2("/get_bonded_validator_rewards", on_get_bonded_validator_rewards, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS)
       MAP_URI_AUTO_JON2_IF("/update", on_update, COMMAND_RPC_UPDATE, !m_restricted)
       MAP_URI_AUTO_BIN2("/get_output_distribution.bin", on_get_output_distribution_bin, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION)
       MAP_URI_AUTO_JON2_IF("/pop_blocks", on_pop_blocks, COMMAND_RPC_POP_BLOCKS, !m_restricted)
@@ -179,6 +182,9 @@ namespace cryptonote
         MAP_JON_RPC_WE_IF("sync_info",           on_sync_info,                  COMMAND_RPC_SYNC_INFO, !m_restricted)
         MAP_JON_RPC_WE("get_txpool_backlog",     on_get_txpool_backlog,         COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG)
         MAP_JON_RPC_WE("get_output_distribution", on_get_output_distribution, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION)
+        MAP_JON_RPC_WE("get_bonded_validators",   on_get_bonded_validators_json, COMMAND_RPC_GET_BONDED_VALIDATORS)
+        MAP_JON_RPC_WE("get_bonded_validator_status", on_get_bonded_validator_status_json, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS)
+        MAP_JON_RPC_WE("get_bonded_validator_rewards", on_get_bonded_validator_rewards_json, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS)
         MAP_JON_RPC_WE_IF("prune_blockchain",    on_prune_blockchain,           COMMAND_RPC_PRUNE_BLOCKCHAIN, !m_restricted)
         MAP_JON_RPC_WE_IF("flush_cache",         on_flush_cache,                COMMAND_RPC_FLUSH_CACHE, !m_restricted)
         MAP_JON_RPC_WE("rpc_access_info",        on_rpc_access_info,            COMMAND_RPC_ACCESS_INFO)
@@ -204,6 +210,9 @@ namespace cryptonote
     bool on_mining_status(const COMMAND_RPC_MINING_STATUS::request& req, COMMAND_RPC_MINING_STATUS::response& res, const connection_context *ctx = NULL);
     bool on_get_outs_bin(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res, const connection_context *ctx = NULL);
     bool on_get_outs(const COMMAND_RPC_GET_OUTPUTS::request& req, COMMAND_RPC_GET_OUTPUTS::response& res, const connection_context *ctx = NULL);
+    bool on_get_bonded_validators(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, const connection_context *ctx = NULL);
+    bool on_get_bonded_validator_status(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, const connection_context *ctx = NULL);
+    bool on_get_bonded_validator_rewards(const COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response& res, const connection_context *ctx = NULL);
     bool on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RPC_GET_INFO::response& res, const connection_context *ctx = NULL);
     bool on_get_net_stats(const COMMAND_RPC_GET_NET_STATS::request& req, COMMAND_RPC_GET_NET_STATS::response& res, const connection_context *ctx = NULL);
     bool on_save_bc(const COMMAND_RPC_SAVE_BC::request& req, COMMAND_RPC_SAVE_BC::response& res, const connection_context *ctx = NULL);
@@ -256,6 +265,9 @@ namespace cryptonote
     bool on_sync_info(const COMMAND_RPC_SYNC_INFO::request& req, COMMAND_RPC_SYNC_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_txpool_backlog(const COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_output_distribution(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_bonded_validators_json(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_bonded_validator_status_json(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_bonded_validator_rewards_json(const COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_prune_blockchain(const COMMAND_RPC_PRUNE_BLOCKCHAIN::request& req, COMMAND_RPC_PRUNE_BLOCKCHAIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_flush_cache(const COMMAND_RPC_FLUSH_CACHE::request& req, COMMAND_RPC_FLUSH_CACHE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_rpc_access_info(const COMMAND_RPC_ACCESS_INFO::request& req, COMMAND_RPC_ACCESS_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

@@ -165,6 +165,29 @@ namespace cryptonote
     block_complete_entry(): pruned(false), block_weight(0) {}
   };
 
+  struct p2p_masternode_info
+  {
+    std::string id;
+    std::string operator_key;
+    std::string collateral_txid;
+    uint64_t collateral_amount = 0;
+    uint64_t registration_height = 0;
+    uint64_t last_uptime_proof_height = 0;
+    bool active = false;
+    uint32_t penalty_points = 0;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(id)
+      KV_SERIALIZE(operator_key)
+      KV_SERIALIZE(collateral_txid)
+      KV_SERIALIZE(collateral_amount)
+      KV_SERIALIZE(registration_height)
+      KV_SERIALIZE(last_uptime_proof_height)
+      KV_SERIALIZE(active)
+      KV_SERIALIZE(penalty_points)
+    END_KV_SERIALIZE_MAP()
+  };
+
 
   /************************************************************************/
   /*                                                                      */
@@ -177,10 +200,12 @@ namespace cryptonote
     {
       block_complete_entry b;
       uint64_t current_blockchain_height;
+      std::vector<p2p_masternode_info> masternodes;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(b)
         KV_SERIALIZE(current_blockchain_height)
+        KV_SERIALIZE_OPT(masternodes, std::vector<p2p_masternode_info>())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -236,11 +261,13 @@ namespace cryptonote
       std::vector<block_complete_entry>  blocks;
       std::vector<crypto::hash>          missed_ids;
       uint64_t                         current_blockchain_height;
+      std::vector<p2p_masternode_info> masternodes;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(blocks)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missed_ids)
         KV_SERIALIZE(current_blockchain_height)
+        KV_SERIALIZE_OPT(masternodes, std::vector<p2p_masternode_info>())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

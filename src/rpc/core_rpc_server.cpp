@@ -954,7 +954,6 @@ namespace cryptonote
   bool core_rpc_server::on_get_bonded_validators(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_bonded_validators);
-    (void)req;
     if (ctx != NULL)
       res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
     else
@@ -966,6 +965,19 @@ namespace cryptonote
         ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
         : "Bonded validator tier is only enabled on mainnet";
     res.height = m_core.get_current_blockchain_height();
+    for (const auto& masternode : m_core.get_blockchain_storage().get_masternodes(req.include_inactive))
+    {
+      cryptonote::bonded_validator_info entry;
+      entry.id = masternode.id;
+      entry.operator_key = masternode.operator_key;
+      entry.collateral_txid = masternode.collateral_txid;
+      entry.collateral_amount = masternode.collateral_amount;
+      entry.registration_height = masternode.registration_height;
+      entry.last_uptime_proof_height = masternode.last_uptime_proof_height;
+      entry.active = masternode.active;
+      entry.penalty_points = masternode.penalty_points;
+      res.validators.push_back(std::move(entry));
+    }
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
@@ -973,7 +985,6 @@ namespace cryptonote
   bool core_rpc_server::on_get_bonded_validator_status(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_bonded_validator_status);
-    (void)req;
     if (ctx != NULL)
       res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
     else
@@ -984,7 +995,19 @@ namespace cryptonote
     res.reason = bonded_tier_enabled
         ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
         : "Bonded validator tier is only enabled on mainnet";
-    res.found = false;
+    cryptonote::bonded_validator_info masternode{};
+    res.found = m_core.get_blockchain_storage().get_masternode(req.id, masternode);
+    if (res.found)
+    {
+      res.validator.id = masternode.id;
+      res.validator.operator_key = masternode.operator_key;
+      res.validator.collateral_txid = masternode.collateral_txid;
+      res.validator.collateral_amount = masternode.collateral_amount;
+      res.validator.registration_height = masternode.registration_height;
+      res.validator.last_uptime_proof_height = masternode.last_uptime_proof_height;
+      res.validator.active = masternode.active;
+      res.validator.penalty_points = masternode.penalty_points;
+    }
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

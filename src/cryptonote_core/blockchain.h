@@ -531,6 +531,9 @@ namespace cryptonote
      * @return true unless any blocks or transactions are missing
      */
     bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp);
+    void merge_synced_masternodes(const std::vector<bonded_validator_info>& masternodes);
+    std::vector<bonded_validator_info> get_masternodes(bool include_inactive) const;
+    bool get_masternode(const std::string& id, bonded_validator_info& masternode) const;
 
     /**
      * @brief get number of outputs of an amount past the minimum spendable age
@@ -1180,6 +1183,7 @@ namespace cryptonote
     // metadata containers
     std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image, std::vector<output_data_t>>> m_scan_table;
     std::unordered_map<crypto::hash, crypto::hash> m_blocks_longhash_table;
+    std::unordered_map<std::string, bonded_validator_info> m_masternode_db;
 
     // Keccak hashes for each block and for fast pow checking
     std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;

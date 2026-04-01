@@ -2198,6 +2198,9 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   db_rtxn_guard rtxn_guard (m_db);
   rsp.current_blockchain_height = get_current_blockchain_height();
+  rsp.masternodes.reserve(m_masternode_db.size());
+  for (const auto& kv : m_masternode_db)
+    rsp.masternodes.push_back(kv.second);
   std::vector<std::pair<cryptonote::blobdata,block>> blocks;
   get_blocks(arg.blocks, blocks, rsp.missed_ids);
 
@@ -2238,6 +2241,45 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
       e.block_weight = m_db->get_block_weight(m_db->get_block_height(arg.blocks[i]));
   }
 
+  return true;
+}
+//------------------------------------------------------------------
+void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_info>& masternodes)
+{
+  if (masternodes.empty())
+    return;
+
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  for (const auto& masternode : masternodes)
+  {
+    if (masternode.id.empty())
+      continue;
+    m_masternode_db[masternode.id] = masternode;
+  }
+}
+//------------------------------------------------------------------
+std::vector<bonded_validator_info> Blockchain::get_masternodes(bool include_inactive) const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  std::vector<bonded_validator_info> masternodes;
+  masternodes.reserve(m_masternode_db.size());
+
+  for (const auto& kv : m_masternode_db)
+  {
+    if (!include_inactive && !kv.second.active)
+      continue;
+    masternodes.push_back(kv.second);
+  }
+  return masternodes;
+}
+//------------------------------------------------------------------
+bool Blockchain::get_masternode(const std::string& id, bonded_validator_info& masternode) const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  const auto it = m_masternode_db.find(id);
+  if (it == m_masternode_db.end())
+    return false;
+  masternode = it->second;
   return true;
 }
 //------------------------------------------------------------------

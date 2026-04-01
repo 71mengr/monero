@@ -564,11 +564,13 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
     template<class t_core>
-    int t_cryptonote_protocol_handler<t_core>::handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& context)
   {
     // @TODO: Eventually drop support for this endpoint
 
     MLOGIF_P2P_MESSAGE(crypto::hash hash; cryptonote::block b; bool ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);, ret, context << "Received NOTIFY_NEW_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
+
+    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
 
     // Redirect this request form to fluffy block handling
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg;
@@ -1038,6 +1040,7 @@ namespace cryptonote
       return 1;
     }
     context.m_expect_response = 0;
+    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
 
     // calculate size of request
     size_t size = 0;
@@ -2875,4 +2878,3 @@ skip:
     m_core.stop();
   }
 } // namespace
-

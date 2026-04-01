@@ -1200,7 +1200,14 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)
   {
-    return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce, seed_height, seed_hash);
+    const bool ok = m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce, seed_height, seed_hash);
+    if (ok)
+    {
+      uint64_t miner_reward = 0, masternode_reward = 0;
+      split_reward_for_masternode(expected_reward, b.major_version, miner_reward, masternode_reward);
+      MDEBUG("Block template reward split - miner: " << print_money(miner_reward) << ", masternode: " << print_money(masternode_reward));
+    }
+    return ok;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)

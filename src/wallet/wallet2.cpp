@@ -6326,6 +6326,17 @@ bool wallet2::parse_payment_id(const std::string& payment_id_str, crypto::hash& 
   return false;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::make_masternode_registration_extra(const std::string& registration, std::vector<uint8_t>& extra)
+{
+  extra.clear();
+  return cryptonote::add_masternode_registration_to_tx_extra(extra, registration);
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::read_masternode_registration_extra(const std::vector<uint8_t>& extra, std::string& registration)
+{
+  return cryptonote::get_masternode_registration_from_tx_extra(extra, registration);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::prepare_file_names(const std::string& file_path)
 {
   do_prepare_file_names(file_path, m_keys_file, m_wallet_file, m_mms_file);

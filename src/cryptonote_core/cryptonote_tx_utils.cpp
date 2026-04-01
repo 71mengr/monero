@@ -114,42 +114,58 @@ namespace cryptonote
       block_reward = block_reward - block_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
     }
 
-    std::vector<uint64_t> out_amounts;
-    decompose_amount_into_digits(block_reward, hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
-      [&out_amounts](uint64_t a_chunk) { out_amounts.push_back(a_chunk); },
-      [&out_amounts](uint64_t a_dust) { out_amounts.push_back(a_dust); });
+    uint64_t miner_reward = 0, masternode_reward = 0;
+    split_reward_for_masternode(block_reward, hard_fork_version, miner_reward, masternode_reward);
 
-    CHECK_AND_ASSERT_MES(1 <= max_outs, false, "max_out must be non-zero");
-    if (height == 0 || hard_fork_version >= 4)
+    account_public_address masternode_address = miner_address;
+    if (!extra_nonce.empty() && extra_nonce.rfind("mn:", 0) == 0)
     {
-      // the genesis block was not decomposed, for unknown reasons
-      while (max_outs < out_amounts.size())
-      {
-        //out_amounts[out_amounts.size() - 2] += out_amounts.back();
-        //out_amounts.resize(out_amounts.size() - 1);
-        out_amounts[1] += out_amounts[0];
-        for (size_t n = 1; n < out_amounts.size(); ++n)
-          out_amounts[n - 1] = out_amounts[n];
-        out_amounts.pop_back();
-      }
+      address_parse_info info{};
+      const std::string registration = extra_nonce.substr(3);
+      if (get_account_address_from_str(info, cryptonote::MAINNET, registration))
+        masternode_address = info.address;
     }
-    else
-    {
-      CHECK_AND_ASSERT_MES(max_outs >= out_amounts.size(), false, "max_out exceeded");
-    }
+
+    std::vector<std::pair<uint64_t, account_public_address>> reward_parts;
+    reward_parts.emplace_back(miner_reward, miner_address);
+    if (masternode_reward > 0)
+      reward_parts.emplace_back(masternode_reward, masternode_address);
 
     uint64_t summary_amounts = 0;
-    for (size_t no = 0; no < out_amounts.size(); no++)
+    size_t no = 0;
+    for (const auto &reward_part: reward_parts)
     {
+      std::vector<uint64_t> out_amounts;
+      decompose_amount_into_digits(reward_part.first, hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
+        [&out_amounts](uint64_t a_chunk) { out_amounts.push_back(a_chunk); },
+        [&out_amounts](uint64_t a_dust) { out_amounts.push_back(a_dust); });
+
+      CHECK_AND_ASSERT_MES(1 <= max_outs, false, "max_out must be non-zero");
+      if (height == 0 || hard_fork_version >= 4)
+      {
+        while (max_outs < out_amounts.size())
+        {
+          out_amounts[1] += out_amounts[0];
+          for (size_t n = 1; n < out_amounts.size(); ++n)
+            out_amounts[n - 1] = out_amounts[n];
+          out_amounts.pop_back();
+        }
+      }
+      else
+      {
+        CHECK_AND_ASSERT_MES(max_outs >= out_amounts.size(), false, "max_out exceeded");
+      }
+
+      for (const uint64_t amount: out_amounts)
+      {
       crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-      bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << crypto::secret_key_explicit_print_ref{txkey.sec} << ")");
+      bool r = crypto::generate_key_derivation(reward_part.second.m_view_public_key, txkey.sec, derivation);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << reward_part.second.m_view_public_key << ", " << crypto::secret_key_explicit_print_ref{txkey.sec} << ")");
 
-      r = crypto::derive_public_key(derivation, no, miner_address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << no << ", "<< miner_address.m_spend_public_key << ")");
+      r = crypto::derive_public_key(derivation, no, reward_part.second.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << no << ", "<< reward_part.second.m_spend_public_key << ")");
 
-      uint64_t amount = out_amounts[no];
       summary_amounts += amount;
 
       bool use_view_tags = hard_fork_version >= HF_VERSION_VIEW_TAGS;
@@ -161,6 +177,8 @@ namespace cryptonote
       cryptonote::set_tx_out(amount, out_eph_public_key, use_view_tags, view_tag, out);
 
       tx.vout.push_back(out);
+      ++no;
+      }
     }
 
     CHECK_AND_ASSERT_MES(summary_amounts == block_reward, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal block_reward = " << block_reward);

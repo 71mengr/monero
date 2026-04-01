@@ -202,6 +202,7 @@ namespace
   const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
+  const char* USAGE_MASTERNODE_REGISTER("masternode_register <registration_data>");
   const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [subtractfeefrom=<D0>[,<D1>,all,...]] [<payment_id>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ACCOUNT("sweep_account <account> [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -1031,6 +1032,33 @@ bool simple_wallet::change_password(const std::vector<std::string> &args)
 bool simple_wallet::payment_id(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   LONG_PAYMENT_ID_SUPPORT_CHECK();
+}
+
+bool simple_wallet::masternode_register(const std::vector<std::string> &args)
+{
+  if (args.size() != 1)
+  {
+    fail_msg_writer() << tr("usage: ") << tr(USAGE_MASTERNODE_REGISTER);
+    return true;
+  }
+
+  std::vector<uint8_t> extra;
+  if (!cryptonote::add_masternode_registration_to_tx_extra(extra, args[0]))
+  {
+    fail_msg_writer() << tr("Failed to create masternode registration payload");
+    return true;
+  }
+
+  std::string registration;
+  if (!cryptonote::get_masternode_registration_from_tx_extra(extra, registration))
+  {
+    fail_msg_writer() << tr("Failed to decode masternode registration payload");
+    return true;
+  }
+
+  success_msg_writer() << tr("Masternode registration tx-extra (hex): ") << epee::string_tools::buff_to_hex_nodelimer(std::string(reinterpret_cast<const char*>(extra.data()), extra.size()));
+  success_msg_writer() << tr("Registration data: ") << registration;
+  return true;
 }
 
 bool simple_wallet::print_fee_info(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
@@ -3707,6 +3735,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::payment_id, _1),
                            tr(USAGE_PAYMENT_ID),
                            tr("Generate a new random full size payment id (obsolete). These will be unencrypted on the blockchain, see integrated_address for encrypted short payment ids."));
+  m_cmd_binder.set_handler("masternode_register",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::masternode_register, _1),
+                           tr(USAGE_MASTERNODE_REGISTER),
+                           tr("Build a tx-extra payload that encodes masternode registration data."));
   m_cmd_binder.set_handler("fee",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_fee_info, _1),
                            tr("Print the information about the current fee and transaction backlog."));

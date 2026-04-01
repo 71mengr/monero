@@ -127,6 +127,19 @@ namespace cryptonote {
     return true;
   }
   //------------------------------------------------------------------------------------
+  void split_reward_for_masternode(uint64_t total_reward, uint8_t version, uint64_t &miner_reward, uint64_t &masternode_reward)
+  {
+    if (version < HF_VERSION_MASTERNODE_REWARD_SPLIT || MASTERNODE_REWARD_BASIS_POINTS == 0)
+    {
+      miner_reward = total_reward;
+      masternode_reward = 0;
+      return;
+    }
+
+    masternode_reward = (total_reward * MASTERNODE_REWARD_BASIS_POINTS) / 10000;
+    miner_reward = total_reward - masternode_reward;
+  }
+  //------------------------------------------------------------------------------------
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl)
   {
     const unsigned char* pbuf = reinterpret_cast<const unsigned char*>(&bl);

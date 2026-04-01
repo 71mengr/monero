@@ -1427,6 +1427,8 @@ private:
     static bool parse_long_payment_id(const std::string& payment_id_str, crypto::hash& payment_id);
     static bool parse_short_payment_id(const std::string& payment_id_str, crypto::hash8& payment_id);
     static bool parse_payment_id(const std::string& payment_id_str, crypto::hash& payment_id);
+    static bool make_masternode_registration_extra(const std::string& registration, std::vector<uint8_t>& extra);
+    static bool read_masternode_registration_extra(const std::vector<uint8_t>& extra, std::string& registration);
 
     bool always_confirm_transfers() const { return m_always_confirm_transfers; }
     void always_confirm_transfers(bool always) { m_always_confirm_transfers = always; }

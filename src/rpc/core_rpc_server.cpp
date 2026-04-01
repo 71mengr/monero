@@ -960,8 +960,11 @@ namespace cryptonote
     else
       res.untrusted = false;
 
-    res.enabled = false;
-    res.reason = "Bonded validator tier is not enabled on this network";
+    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    res.enabled = bonded_tier_enabled;
+    res.reason = bonded_tier_enabled
+        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
+        : "Bonded validator tier is only enabled on mainnet";
     res.height = m_core.get_current_blockchain_height();
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -976,8 +979,11 @@ namespace cryptonote
     else
       res.untrusted = false;
 
-    res.enabled = false;
-    res.reason = "Bonded validator tier is not enabled on this network";
+    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    res.enabled = bonded_tier_enabled;
+    res.reason = bonded_tier_enabled
+        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
+        : "Bonded validator tier is only enabled on mainnet";
     res.found = false;
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -991,8 +997,11 @@ namespace cryptonote
     else
       res.untrusted = false;
 
-    res.enabled = false;
-    res.reason = "Bonded validator tier is not enabled on this network";
+    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    res.enabled = bonded_tier_enabled;
+    res.reason = bonded_tier_enabled
+        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
+        : "Bonded validator tier is only enabled on mainnet";
     res.id = req.id;
     res.total_amount = 0;
     res.status = CORE_RPC_STATUS_OK;

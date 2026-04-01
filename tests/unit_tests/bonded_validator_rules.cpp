@@ -61,10 +61,10 @@ TEST(bonded_validator_rules, reward_split_preserves_invariants)
       10'000'000'000ULL,
       1'000'000ULL,
       600'000'000ULL,
-      2500);
+      5000);
 
-  ASSERT_EQ(split.validator_reward, 2'500'000'000ULL);
-  ASSERT_EQ(split.miner_reward, 7'501'000'000ULL);
+  ASSERT_EQ(split.validator_reward, 5'000'000'000ULL);
+  ASSERT_EQ(split.miner_reward, 5'001'000'000ULL);
 
   const uint64_t total_paid = split.validator_reward + split.miner_reward + split.tail_emission;
   const uint64_t total_expected = 10'000'000'000ULL + 1'000'000ULL + 600'000'000ULL;

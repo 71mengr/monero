@@ -113,32 +113,106 @@ validator payouts.
 
 ## 5) Penalty and unlock rules
 
-### Missed duties threshold
+This section defines consensus-only, deterministic, and reorg-safe handling of
+missed duties, deregistration, proof validation, and collateral release.
 
-Track missed duty score over a sliding epoch window:
+### i) Missed-duty scoring
 
-- Below warning threshold: no penalty.
-- Between warning and penalty threshold: reward haircut.
-- Above deregistration threshold: immediate removal from active set and start
-  unlock delay.
+Each validator `v` has an on-chain duty score over a fixed sliding window:
 
-### Deregistration proof format
+- `duty_window_epochs` (consensus constant; example: 8 epochs).
+- Per epoch `E`, derive deterministic duty opportunities:
+  - `assigned_duties(v, E)`: integer count produced from canonical assignment
+    rules.
+  - `missed_duties(v, E)`: count of duties lacking a valid proof by
+    `proof_deadline_blocks` after assignment.
+- Compute windowed score at epoch `E`:
+  - `A(v, E) = sum(assigned_duties(v, e))` for `e in [E - W + 1, E]`
+  - `M(v, E) = sum(missed_duties(v, e))` for same range
+  - `miss_ratio_bps(v, E) = floor(10000 * M(v, E) / max(1, A(v, E)))`
 
-A deregistration event should be triggerable by a quorum proof containing:
+`assigned_duties` and `missed_duties` MUST be derivable from canonical chain
+state only. Mempool presence, peer-local observations, and wall-clock time MUST
+NOT affect scoring.
 
-- accused validator ID,
-- duty context (height/epoch/challenge ID),
-- attestation signatures from required quorum,
-- canonical reason code.
+### ii) Thresholds for warnings, penalties, and deregistration
 
-Proof format must be canonical and signature-verifiable on-chain.
+Use basis-point thresholds fixed by network version:
 
-### Unlock delay and slashing
+- `warn_threshold_bps`
+- `penalty_threshold_bps`
+- `deregister_threshold_bps`
+- with required ordering:
+  `0 <= warn_threshold_bps <= penalty_threshold_bps <= deregister_threshold_bps <= 10000`
 
-- `unlock_delay_epochs` applies after voluntary resign or forced deregistration.
-- If slashing is enabled at activation:
-  - slash amount determined by reason code and offense severity,
-  - unslashed remainder becomes claimable only after unlock delay.
+At each epoch boundary:
+
+1. If `miss_ratio_bps < warn_threshold_bps`: no action.
+2. If `warn_threshold_bps <= miss_ratio_bps < penalty_threshold_bps`:
+   non-removal warning state (consensus-visible flag only).
+3. If `penalty_threshold_bps <= miss_ratio_bps < deregister_threshold_bps`:
+   reward haircut using deterministic function
+   `haircut_bps = f(miss_ratio_bps)` (where `f` is consensus-defined and
+   monotonic).
+4. If `miss_ratio_bps >= deregister_threshold_bps`: validator enters
+   `deregistered_pending_finality`.
+
+To avoid reorg thrash, final state transition to `deregistered` occurs only
+after `dereg_finality_depth` blocks have confirmed the triggering evidence.
+
+### iii) Deregistration proof format (quorum attestations)
+
+Define canonical on-chain object `deregistration_proof_v1`:
+
+- `version` (u8)
+- `validator_id` (fixed-size canonical encoding)
+- `epoch_index` and `duty_slot` (or challenge tuple) identifying missed duty
+- `reason_code` (enum; e.g. missed-heartbeat, missed-challenge, equivocation)
+- `evidence_root` (hash of canonical evidence payload)
+- `quorum_id` (deterministically derived from epoch randomness)
+- `attestation_bitmap` (bitset of quorum members who signed)
+- `quorum_signature` (aggregated signature) OR ordered individual signatures
+  with canonical index order
+
+Validation rules:
+
+1. Recompute quorum membership deterministically from chain state at the duty
+   epoch.
+2. Verify signer set cardinality `>= quorum_threshold`.
+3. Verify all signatures over exact domain-separated message:
+   `H("bonded-dereg-proof-v1" || core_fields)`.
+4. Enforce uniqueness with key
+   `(validator_id, epoch_index, duty_slot, reason_code)` to prevent duplicate
+   penalties.
+5. Reject non-canonical encodings (field order, length, signature ordering).
+
+Proof acceptance MUST be purely a function of block contents plus referenced
+historical chain state, making it deterministic across nodes and replay-safe.
+
+### iv) Slashing and unlock-delay semantics
+
+On finalized deregistration (or voluntary resign), collateral transitions by a
+deterministic state machine:
+
+1. `active` -> `exiting_locked` at `event_height`.
+2. Optional slash at `event_height`:
+   - `slash_bps = slash_table[reason_code][severity_band]`
+   - `slashed_amount = floor(collateral_locked * slash_bps / 10000)`
+   - burn or route destination is consensus-defined.
+3. Remaining collateral enters timelock until:
+   - `unlock_height = event_height + unlock_delay_blocks`.
+4. Claims are valid only at/after `unlock_height` and only for unslashed
+   remainder.
+
+Additional semantics:
+
+- Slashing MUST be one-shot per unique offense key.
+- If multiple offenses are included in one block, apply canonical ordering by
+  `(event_height, reason_code, evidence_hash)` before computing cumulative slash.
+- Total slash MUST be capped at `collateral_locked` (saturating arithmetic).
+- Reorg handling is automatic: if trigger blocks are detached before
+  `dereg_finality_depth`, state rolls back and no lasting slash/unlock transition
+  remains.
 
 ---
 

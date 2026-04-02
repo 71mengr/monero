@@ -34,6 +34,7 @@
 
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 
@@ -133,6 +134,65 @@ TEST(parse_tx_extra, handles_pub_key_and_padding)
   ASSERT_EQ(2, tx_extra_fields.size());
   ASSERT_EQ(typeid(cryptonote::tx_extra_pub_key), tx_extra_fields[0].type());
   ASSERT_EQ(typeid(cryptonote::tx_extra_padding), tx_extra_fields[1].type());
+}
+
+TEST(masternode_registration_tx_extra, roundtrip_canonical_payload)
+{
+  crypto::public_key operator_pubkey{};
+  crypto::secret_key operator_secret_key{};
+  crypto::generate_keys(operator_pubkey, operator_secret_key);
+
+  cryptonote::masternode_registration_payload payload{};
+  payload.version = cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION;
+  payload.operator_pubkey = operator_pubkey;
+  payload.collateral_outpoint.txid = crypto::rand<crypto::hash>();
+  payload.collateral_outpoint.vout = 3;
+  payload.collateral_amount = 1500000000000;
+  payload.service_endpoint_commitment = crypto::cn_fast_hash("svc", 3);
+  payload.has_valid_from_height = true;
+  payload.valid_from_height = 42;
+
+  crypto::hash preimage_hash{};
+  ASSERT_TRUE(cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash));
+  crypto::generate_signature(preimage_hash, operator_pubkey, operator_secret_key, payload.operator_signature);
+
+  std::vector<uint8_t> extra{};
+  ASSERT_TRUE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
+
+  cryptonote::masternode_registration_payload decoded{};
+  ASSERT_TRUE(cryptonote::get_masternode_registration_from_tx_extra(extra, decoded));
+  ASSERT_EQ(payload.version, decoded.version);
+  ASSERT_EQ(payload.operator_pubkey, decoded.operator_pubkey);
+  ASSERT_EQ(payload.collateral_outpoint.txid, decoded.collateral_outpoint.txid);
+  ASSERT_EQ(payload.collateral_outpoint.vout, decoded.collateral_outpoint.vout);
+  ASSERT_EQ(payload.collateral_amount, decoded.collateral_amount);
+  ASSERT_EQ(payload.service_endpoint_commitment, decoded.service_endpoint_commitment);
+  ASSERT_EQ(payload.has_valid_from_height, decoded.has_valid_from_height);
+  ASSERT_EQ(payload.valid_from_height, decoded.valid_from_height);
+}
+
+TEST(masternode_registration_tx_extra, rejects_invalid_signature)
+{
+  crypto::public_key operator_pubkey{};
+  crypto::secret_key operator_secret_key{};
+  crypto::generate_keys(operator_pubkey, operator_secret_key);
+
+  cryptonote::masternode_registration_payload payload{};
+  payload.version = cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION;
+  payload.operator_pubkey = operator_pubkey;
+  payload.collateral_outpoint.txid = crypto::rand<crypto::hash>();
+  payload.collateral_outpoint.vout = 1;
+  payload.collateral_amount = 1500000000000;
+  payload.service_endpoint_commitment = crypto::rand<crypto::hash>();
+  payload.has_valid_from_height = false;
+
+  crypto::hash preimage_hash{};
+  ASSERT_TRUE(cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash));
+  crypto::generate_signature(preimage_hash, operator_pubkey, operator_secret_key, payload.operator_signature);
+  payload.collateral_amount += 1;
+
+  std::vector<uint8_t> extra{};
+  ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
 }
 
 TEST(parse_and_validate_tx_extra, is_valid_tx_extra_parsed)

@@ -47,6 +47,44 @@
 
 namespace cryptonote
 {
+  constexpr uint8_t TX_EXTRA_MASTERNODE_REGISTRATION_VERSION = 1;
+  constexpr size_t TX_EXTRA_MASTERNODE_SERVICE_ENDPOINT_COMMITMENT_MAX_SIZE = 64;
+
+  struct masternode_collateral_outpoint
+  {
+    crypto::hash txid;
+    uint32_t vout;
+
+    BEGIN_SERIALIZE()
+      FIELD(txid)
+      VARINT_FIELD(vout)
+    END_SERIALIZE()
+  };
+
+  struct masternode_registration_payload
+  {
+    uint8_t version = TX_EXTRA_MASTERNODE_REGISTRATION_VERSION;
+    crypto::public_key operator_pubkey;
+    masternode_collateral_outpoint collateral_outpoint;
+    uint64_t collateral_amount = 0;
+    crypto::hash service_endpoint_commitment;
+    bool has_valid_from_height = false;
+    uint64_t valid_from_height = 0;
+    crypto::signature operator_signature;
+
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(version)
+      FIELD(operator_pubkey)
+      FIELD(collateral_outpoint)
+      VARINT_FIELD(collateral_amount)
+      FIELD(service_endpoint_commitment)
+      FIELD(has_valid_from_height)
+      if (has_valid_from_height)
+        VARINT_FIELD(valid_from_height)
+      FIELD(operator_signature)
+    END_SERIALIZE()
+  };
+
   struct tx_extra_padding
   {
     size_t size;
@@ -177,7 +215,7 @@ namespace cryptonote
 
   struct tx_extra_masternode_registration
   {
-    std::string registration;
+    masternode_registration_payload registration;
 
     BEGIN_SERIALIZE()
       FIELD(registration)

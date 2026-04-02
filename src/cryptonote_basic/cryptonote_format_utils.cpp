@@ -738,8 +738,30 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& registration)
+  bool get_masternode_registration_hash_preimage(const masternode_registration_payload& registration, crypto::hash& preimage_hash)
   {
+    masternode_registration_payload preimage = registration;
+    preimage.operator_signature = crypto::null_sig;
+    blobdata preimage_blob;
+    CHECK_AND_ASSERT_MES(t_serializable_object_to_blob(preimage, preimage_blob), false, "failed to serialize masternode registration preimage");
+    crypto::cn_fast_hash(preimage_blob.data(), preimage_blob.size(), preimage_hash);
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool check_masternode_registration_payload(const masternode_registration_payload& registration)
+  {
+    CHECK_AND_ASSERT_MES(registration.version == TX_EXTRA_MASTERNODE_REGISTRATION_VERSION, false, "invalid masternode registration version");
+    CHECK_AND_ASSERT_MES(crypto::check_key(registration.operator_pubkey), false, "invalid masternode registration operator pubkey");
+    CHECK_AND_ASSERT_MES(registration.collateral_amount > 0, false, "invalid masternode registration collateral amount");
+    crypto::hash preimage_hash{};
+    CHECK_AND_ASSERT_MES(get_masternode_registration_hash_preimage(registration, preimage_hash), false, "failed to get masternode registration preimage hash");
+    CHECK_AND_ASSERT_MES(crypto::check_signature(preimage_hash, registration.operator_pubkey, registration.operator_signature), false, "invalid masternode registration operator signature");
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const masternode_registration_payload& registration)
+  {
+    CHECK_AND_ASSERT_MES(check_masternode_registration_payload(registration), false, "invalid masternode registration payload");
     tx_extra_field field = tx_extra_masternode_registration{ registration };
     std::ostringstream oss;
     binary_archive<true> ar(oss);
@@ -752,15 +774,35 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, std::string& registration)
+  bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, masternode_registration_payload& registration)
   {
-    registration.clear();
+    registration = {};
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx_extra, tx_extra_fields);
     tx_extra_masternode_registration registration_field;
     if (!find_tx_extra_field_by_type(tx_extra_fields, registration_field))
       return false;
     registration = registration_field.registration;
+    CHECK_AND_ASSERT_MES(check_masternode_registration_payload(registration), false, "invalid masternode registration payload");
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& registration)
+  {
+    blobdata payload_blob;
+    CHECK_AND_ASSERT_MES(epee::string_tools::parse_hexstr_to_binbuff(registration, payload_blob), false, "failed to parse masternode registration payload as hex");
+    masternode_registration_payload payload{};
+    CHECK_AND_ASSERT_MES(t_serializable_object_from_blob(payload, payload_blob), false, "failed to deserialize canonical masternode registration payload");
+    return add_masternode_registration_to_tx_extra(tx_extra, payload);
+  }
+  //---------------------------------------------------------------
+  bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, std::string& registration)
+  {
+    masternode_registration_payload payload{};
+    CHECK_AND_ASSERT_MES(get_masternode_registration_from_tx_extra(tx_extra, payload), false, "failed to get canonical masternode registration payload");
+    blobdata payload_blob;
+    CHECK_AND_ASSERT_MES(t_serializable_object_to_blob(payload, payload_blob), false, "failed to serialize canonical masternode registration payload");
+    registration = epee::string_tools::buff_to_hex_nodelimer(payload_blob);
     return true;
   }
   //---------------------------------------------------------------

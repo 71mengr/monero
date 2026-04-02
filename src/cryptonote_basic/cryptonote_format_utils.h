@@ -82,6 +82,10 @@ namespace cryptonote
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const std::vector<uint8_t>& tx_extra);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const transaction_prefix& tx);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);
+  bool get_masternode_registration_hash_preimage(const masternode_registration_payload& registration, crypto::hash& preimage_hash);
+  bool check_masternode_registration_payload(const masternode_registration_payload& registration);
+  bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const masternode_registration_payload& registration);
+  bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, masternode_registration_payload& registration);
   bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& registration);
   bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, std::string& registration);
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce);

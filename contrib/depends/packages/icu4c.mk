@@ -11,17 +11,21 @@ endef
 
 define $(package)_config_cmds
   patch -p1 < $($(package)_patch_dir)/icu-001-dont-build-static-dynamic-twice.patch &&\
-  mkdir builda &&\
-  mkdir buildb &&\
+  mkdir -p builda &&\
+  mkdir -p buildb &&\
   cd builda &&\
-  sh ../source/runConfigureICU Linux &&\
-  make &&\
+  (unset CC CXX AR RANLIB NM CFLAGS CXXFLAGS LDFLAGS && \
+   sh ../source/runConfigureICU Linux && \
+   $(MAKE)) &&\
   cd ../buildb &&\
-  sh ../source/runConfigureICU MinGW --enable-static=yes --disable-shared --disable-layout --disable-layoutex --disable-tests --disable-samples --prefix=$(host_prefix) --with-cross-build=`pwd`/../builda &&\
+  sh ../source/runConfigureICU MinGW --host=$(host) --build=$(build) \
+  --enable-static=yes --disable-shared --disable-layout --disable-layoutex \
+  --disable-tests --disable-samples --prefix=$(host_prefix) \
+  --with-cross-build=`pwd`/../builda &&\
   $(MAKE) $($(package)_build_opts)
 endef
 
 define $(package)_stage_cmds
   cd buildb &&\
-  $(MAKE) $($(package)_build_opts) DESTDIR=$($(package)_staging_dir) install lib/*
+  $(MAKE) $($(package)_build_opts) DESTDIR=$($(package)_staging_dir) install
 endef

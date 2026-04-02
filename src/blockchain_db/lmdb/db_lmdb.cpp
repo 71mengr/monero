@@ -2452,6 +2452,27 @@ void BlockchainLMDB::set_masternode_blob(const std::string& id, const cryptonote
     throw0(DB_ERROR(lmdb_error("Failed to set masternode blob: ", result).c_str()));
 }
 
+void BlockchainLMDB::remove_masternode_blob(const std::string& id)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  CURSOR(properties);
+
+  const std::string key = std::string(LMDB_MASTERNODE_PREFIX) + id;
+  MDB_val_set(k, key);
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_properties, &k, &v, MDB_SET);
+  if (result == MDB_NOTFOUND)
+    return;
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to find masternode blob: ", result).c_str()));
+
+  result = mdb_cursor_del(m_cur_properties, 0);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to remove masternode blob: ", result).c_str()));
+}
+
 bool BlockchainLMDB::get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);

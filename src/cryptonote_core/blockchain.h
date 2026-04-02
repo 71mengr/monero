@@ -1161,6 +1161,11 @@ namespace cryptonote
 #ifndef IN_UNIT_TESTS
   private:
 #endif
+    void apply_masternode_registrations_from_block(
+        const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
+        uint64_t height,
+        uint64_t timestamp);
+    void revert_masternode_transitions_for_block(uint64_t height);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;
@@ -1184,6 +1189,22 @@ namespace cryptonote
     std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image, std::vector<output_data_t>>> m_scan_table;
     std::unordered_map<crypto::hash, crypto::hash> m_blocks_longhash_table;
     std::unordered_map<std::string, bonded_validator_info> m_masternode_db;
+    std::unordered_map<std::string, std::string> m_masternode_by_operator_key;
+    std::unordered_map<std::string, std::string> m_masternode_by_collateral_outpoint;
+
+    struct masternode_transition_undo
+    {
+      std::string id;
+      bool had_previous_state = false;
+      bonded_validator_info previous_state{};
+    };
+
+    struct masternode_block_undo
+    {
+      uint64_t height = 0;
+      std::vector<masternode_transition_undo> transitions;
+    };
+    std::vector<masternode_block_undo> m_masternode_undo_journal;
 
     // Keccak hashes for each block and for fast pow checking
     std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;

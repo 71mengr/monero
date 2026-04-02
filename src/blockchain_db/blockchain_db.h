@@ -1791,6 +1791,7 @@ public:
    * @param blob serialized masternode state blob
    */
   virtual void set_masternode_blob(const std::string& id, const cryptonote::blobdata& blob) = 0;
+  virtual void remove_masternode_blob(const std::string& id) = 0;
 
   /**
    * @brief retrieves serialized masternode state by id

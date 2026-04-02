@@ -45,6 +45,7 @@
 #include "int-util.h"
 #include "misc_language.h"
 #include "misc_log_ex.h"
+#include "string_tools.h"
 #include "tx_verification_utils.h"
 #include "warnings.h"
 #include "common/perf_timer.h"
@@ -113,6 +114,95 @@ namespace cryptonote
       return amount * ACCEPT_THRESHOLD;
     }
 
+    bool get_masternode_registration_from_tx(const transaction& tx, masternode_registration_payload& registration, bool& has_registration)
+    {
+      has_registration = false;
+      std::vector<tx_extra_field> tx_extra_fields;
+      if (!parse_tx_extra(tx.extra, tx_extra_fields))
+        return false;
+
+      for (const auto& field : tx_extra_fields)
+      {
+        if (field.type() != typeid(tx_extra_masternode_registration))
+          continue;
+
+        if (has_registration)
+          return false; // duplicate registration payloads are rejected by policy
+        registration = boost::get<tx_extra_masternode_registration>(field).registration;
+        has_registration = true;
+      }
+
+      if (has_registration && !check_masternode_registration_payload(registration))
+        return false;
+
+      return true;
+    }
+
+    bool check_masternode_registration_policy(
+        Blockchain& blockchain,
+        const transaction& tx,
+        const crypto::hash& txid,
+        const uint8_t hf_version)
+    {
+      masternode_registration_payload registration{};
+      bool has_registration = false;
+      if (!get_masternode_registration_from_tx(tx, registration, has_registration))
+        return false;
+      if (!has_registration)
+        return true;
+
+      transaction collateral_tx{};
+      if (!blockchain.get_db().get_tx(registration.collateral_outpoint.txid, collateral_tx))
+        return false;
+
+      if (registration.collateral_outpoint.vout >= collateral_tx.vout.size())
+        return false;
+
+      if (registration.collateral_amount != 0 && collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
+        return false;
+
+      if (!blockchain.is_tx_spendtime_unlocked(collateral_tx.unlock_time, hf_version))
+        return false;
+
+      for (const auto& validator : blockchain.get_masternodes(false))
+      {
+        if (validator.operator_key == epee::string_tools::pod_to_hex(registration.operator_pubkey))
+          return false;
+        if (validator.collateral_txid == epee::string_tools::pod_to_hex(registration.collateral_outpoint.txid))
+          return false;
+      }
+
+      bool duplicate_in_pool = false;
+      blockchain.for_all_txpool_txes(
+          [&](const crypto::hash& existing_txid, const txpool_tx_meta_t&, const cryptonote::blobdata_ref* txblob)
+          {
+            if (existing_txid == txid || txblob == nullptr)
+              return true;
+
+            transaction pool_tx{};
+            if (!parse_and_validate_tx_from_blob(*txblob, pool_tx))
+              return true;
+
+            masternode_registration_payload pool_registration{};
+            bool pool_has_registration = false;
+            if (!get_masternode_registration_from_tx(pool_tx, pool_registration, pool_has_registration) || !pool_has_registration)
+              return true;
+
+            if (pool_registration.operator_pubkey == registration.operator_pubkey ||
+                (pool_registration.collateral_outpoint.txid == registration.collateral_outpoint.txid &&
+                 pool_registration.collateral_outpoint.vout == registration.collateral_outpoint.vout))
+            {
+              duplicate_in_pool = true;
+              return false;
+            }
+            return true;
+          },
+          true /* include_blob */,
+          relay_category::all);
+
+      return !duplicate_in_pool;
+    }
+
     // external lock must be held for the comparison+set to work properly
     void set_if_less(std::atomic<time_t>& next_check, const time_t candidate) noexcept
     {
@@ -161,6 +251,14 @@ namespace cryptonote
     {
       LOG_PRINT_L1("transaction " << id << " failed non-input consensus rule checks");
       tvc.m_verifivation_failed = true; // should already be set, but just in case
+      return false;
+    }
+
+    if (version >= HF_MN_REG && !check_masternode_registration_policy(m_blockchain, tx, id, version))
+    {
+      LOG_PRINT_L1("transaction " << id << " failed masternode registration mempool policy checks");
+      tvc.m_verifivation_failed = true;
+      tvc.m_no_drop_offense = true;
       return false;
     }
 

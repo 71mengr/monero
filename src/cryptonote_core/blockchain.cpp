@@ -113,7 +113,7 @@ void apply_masternode_registrations_from_block(
   for (const auto& tx_entry : txs)
   {
     const auto& tx = tx_entry.first;
-    std::string registration_payload;
+    cryptonote::masternode_registration_payload registration_payload{};
     if (!cryptonote::get_masternode_registration_from_tx_extra(tx.extra, registration_payload))
       continue;
 
@@ -126,8 +126,9 @@ void apply_masternode_registrations_from_block(
       info = existing->second;
 
     info.id = txid;
-    info.collateral_txid = txid;
-    info.operator_key = registration_payload;
+    info.collateral_txid = epee::string_tools::pod_to_hex(registration_payload.collateral_outpoint.txid);
+    info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
+    info.collateral_amount = registration_payload.collateral_amount;
     info.registration_height = height;
     info.active = true;
     info.online = true;

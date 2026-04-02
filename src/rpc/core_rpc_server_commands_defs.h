@@ -39,6 +39,7 @@
 #include "rpc/rpc_handler.h"
 #include "common/varint.h"
 #include "common/perf_timer.h"
+#include "serialization/string.h"
 
 namespace
 {

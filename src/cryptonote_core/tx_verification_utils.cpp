@@ -197,7 +197,7 @@ static bool ver_non_input_consensus_templated(TxForwardIt tx_begin, TxForwardIt 
 
                 ++registration_count;
                 const auto& registration = boost::get<tx_extra_masternode_registration>(field).registration;
-                if (registration.empty())
+                if (!check_masternode_registration_payload(registration))
                 {
                     tvc.m_verifivation_failed = true;
                     return false;

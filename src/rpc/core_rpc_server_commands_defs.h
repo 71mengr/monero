@@ -2816,6 +2816,10 @@ namespace cryptonote
       bool enabled;
       std::string reason;
       uint64_t height;
+      uint64_t validator_count;
+      uint64_t active_validator_count;
+      std::string last_paid_address;
+      std::string next_in_line_id;
       std::vector<bonded_validator_info> validators;
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2823,6 +2827,10 @@ namespace cryptonote
         KV_SERIALIZE(enabled)
         KV_SERIALIZE(reason)
         KV_SERIALIZE(height)
+        KV_SERIALIZE_OPT(validator_count, (uint64_t)0)
+        KV_SERIALIZE_OPT(active_validator_count, (uint64_t)0)
+        KV_SERIALIZE_OPT(last_paid_address, std::string())
+        KV_SERIALIZE_OPT(next_in_line_id, std::string())
         KV_SERIALIZE(validators)
       END_KV_SERIALIZE_MAP()
     };

@@ -31,6 +31,7 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/uuid/nil_generator.hpp>
 #include <boost/filesystem.hpp>
+#include <algorithm>
 #include "include_base_utils.h"
 #include "string_tools.h"
 using namespace epee;
@@ -965,7 +966,11 @@ namespace cryptonote
         ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
         : "Bonded validator tier is only enabled on mainnet";
     res.height = m_core.get_current_blockchain_height();
-    for (const auto& masternode : m_core.get_blockchain_storage().get_masternodes(req.include_inactive))
+    const auto validators = m_core.get_blockchain_storage().get_masternodes(req.include_inactive);
+    const auto active_validators = m_core.get_blockchain_storage().get_masternodes(false);
+    res.validator_count = validators.size();
+    res.active_validator_count = active_validators.size();
+    for (const auto& masternode : validators)
     {
       cryptonote::bonded_validator_info entry;
       entry.id = masternode.id;
@@ -986,6 +991,32 @@ namespace cryptonote
       entry.updated_timestamp = masternode.updated_timestamp;
       res.validators.push_back(std::move(entry));
     }
+
+    if (!active_validators.empty())
+    {
+      std::vector<std::string> ordered_ids;
+      ordered_ids.reserve(active_validators.size());
+      for (const auto& masternode : active_validators)
+        ordered_ids.push_back(masternode.id);
+      std::sort(ordered_ids.begin(), ordered_ids.end());
+      res.next_in_line_id = ordered_ids[res.height % ordered_ids.size()];
+    }
+
+    if (res.height > 0)
+    {
+      const cryptonote::block top_block = m_core.get_blockchain_storage().get_db().get_block_from_height(res.height - 1);
+      std::vector<cryptonote::tx_extra_field> tx_extra_fields;
+      if (cryptonote::parse_tx_extra(top_block.miner_tx.extra, tx_extra_fields))
+      {
+        cryptonote::tx_extra_nonce extra_nonce;
+        if (cryptonote::find_tx_extra_field_by_type(tx_extra_fields, extra_nonce) &&
+            extra_nonce.nonce.rfind("mn:", 0) == 0)
+        {
+          res.last_paid_address = extra_nonce.nonce.substr(3);
+        }
+      }
+    }
+
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

@@ -280,6 +280,64 @@ bool t_command_parser_executor::print_block(const std::vector<std::string>& args
   return true;
 }
 
+bool t_command_parser_executor::print_masternodes(const std::vector<std::string>& args)
+{
+  if (args.size() > 1)
+  {
+    std::cout << "Invalid syntax: At most one optional parameter expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  bool include_inactive = false;
+  if (!args.empty())
+  {
+    if (args[0] == "include_inactive" || args[0] == "all" || args[0] == "true" || args[0] == "1")
+      include_inactive = true;
+    else
+    {
+      std::cout << "Invalid syntax: expected optional include_inactive flag. For more details, use the help command." << std::endl;
+      return true;
+    }
+  }
+
+  return m_executor.print_masternodes(include_inactive);
+}
+
+bool t_command_parser_executor::print_masternode(const std::vector<std::string>& args)
+{
+  if (args.size() != 1)
+  {
+    std::cout << "Invalid syntax: One parameter expected (<id>). For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  return m_executor.print_masternode(args[0]);
+}
+
+bool t_command_parser_executor::print_masternode_payments(const std::vector<std::string>& args)
+{
+  if (args.empty() || args.size() > 3)
+  {
+    std::cout << "Invalid syntax: getmasternode_payment <id> [from_height] [to_height]. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  uint64_t from_height = 0;
+  uint64_t to_height = 0;
+  if (args.size() >= 2 && !epee::string_tools::get_xtype_from_string(from_height, args[1]))
+  {
+    std::cout << "Invalid syntax: from_height must be an unsigned integer. For more details, use the help command." << std::endl;
+    return true;
+  }
+  if (args.size() >= 3 && !epee::string_tools::get_xtype_from_string(to_height, args[2]))
+  {
+    std::cout << "Invalid syntax: to_height must be an unsigned integer. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  return m_executor.print_masternode_payments(args[0], from_height, to_height);
+}
+
 bool t_command_parser_executor::print_transaction(const std::vector<std::string>& args)
 {
   bool include_metadata = false;

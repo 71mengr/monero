@@ -973,6 +973,125 @@ bool t_rpc_command_executor::print_block_by_height(uint64_t height, bool include
   return true;
 }
 
+bool t_rpc_command_executor::print_masternodes(bool include_inactive)
+{
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATORS::request req{};
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATORS::response res{};
+  req.include_inactive = include_inactive;
+
+  const char *fail_message = "Failed calling getmasternodes";
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(req, res, "getmasternodes", fail_message))
+      return true;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_bonded_validators(req, res) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, res.status);
+      return true;
+    }
+  }
+
+  tools::success_msg_writer()
+      << "height: " << res.height
+      << ", validators: " << res.validator_count
+      << ", active: " << res.active_validator_count
+      << ", last_paid_address: " << (res.last_paid_address.empty() ? "<none>" : res.last_paid_address)
+      << ", next_in_line_id: " << (res.next_in_line_id.empty() ? "<none>" : res.next_in_line_id);
+
+  for (const auto& validator : res.validators)
+  {
+    tools::msg_writer()
+        << validator.id
+        << " | active=" << validator.active
+        << " online=" << validator.online
+        << " missed=" << validator.missed_duties
+        << " penalty=" << validator.penalty_points
+        << " collateral=" << cryptonote::print_money(validator.collateral_amount);
+  }
+
+  return true;
+}
+
+bool t_rpc_command_executor::print_masternode(const std::string &id)
+{
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request req{};
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response res{};
+  req.id = id;
+
+  const char *fail_message = "Failed calling getmasternode";
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(req, res, "getmasternode", fail_message))
+      return true;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_bonded_validator_status(req, res) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, res.status);
+      return true;
+    }
+  }
+
+  if (!res.found)
+  {
+    tools::fail_msg_writer() << "No masternode found for id: " << id;
+    return true;
+  }
+
+  const auto& v = res.validator;
+  tools::success_msg_writer()
+      << "id: " << v.id << std::endl
+      << "operator_key: " << v.operator_key << std::endl
+      << "active: " << v.active << ", online: " << v.online << ", deregistered: " << v.deregistered << std::endl
+      << "collateral: " << cryptonote::print_money(v.collateral_amount) << ", collateral_txid: " << v.collateral_txid << std::endl
+      << "registration_height: " << v.registration_height << ", lock_end_height: " << v.lock_end_height << std::endl
+      << "last_uptime_proof_height: " << v.last_uptime_proof_height << ", missed_duties: " << v.missed_duties << ", penalty_points: " << v.penalty_points;
+
+  return true;
+}
+
+bool t_rpc_command_executor::print_masternode_payments(const std::string &id, uint64_t from_height, uint64_t to_height)
+{
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request req{};
+  cryptonote::COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response res{};
+  req.id = id;
+  req.from_height = from_height;
+  req.to_height = to_height;
+
+  const char *fail_message = "Failed calling getmasternode_payment";
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(req, res, "getmasternode_payments", fail_message))
+      return true;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_bonded_validator_rewards(req, res) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, res.status);
+      return true;
+    }
+  }
+
+  tools::success_msg_writer()
+      << "id: " << id
+      << ", entries: " << res.rewards.size()
+      << ", from_height: " << from_height
+      << ", to_height: " << to_height;
+  for (const auto& reward : res.rewards)
+  {
+    tools::msg_writer()
+        << "height=" << reward.height
+        << ", amount=" << cryptonote::print_money(reward.amount)
+        << ", txid=" << reward.txid;
+  }
+  return true;
+}
+
 bool t_rpc_command_executor::print_transaction(crypto::hash transaction_hash,
   bool include_metadata,
   bool include_hex,

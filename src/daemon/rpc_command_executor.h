@@ -95,6 +95,9 @@ public:
   bool print_block_by_hash(crypto::hash block_hash, bool include_hex);
 
   bool print_block_by_height(uint64_t height, bool include_hex);
+  bool print_masternodes(bool include_inactive);
+  bool print_masternode(const std::string &id);
+  bool print_masternode_payments(const std::string &id, uint64_t from_height, uint64_t to_height);
 
   bool print_transaction(crypto::hash transaction_hash, bool include_metadata, bool include_hex, bool include_json);
 

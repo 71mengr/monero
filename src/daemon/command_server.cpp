@@ -102,6 +102,30 @@ t_command_server::t_command_server(
     , "Print a given block."
     );
   m_command_lookup.set_handler(
+      "getmasternodes"
+    , std::bind(&t_command_parser_executor::print_masternodes, &m_parser, p::_1)
+    , "getmasternodes [include_inactive]"
+    , "Print bonded-validator (masternode-like) summary and entries."
+    );
+  m_command_lookup.set_handler(
+      "getmasternode"
+    , std::bind(&t_command_parser_executor::print_masternode, &m_parser, p::_1)
+    , "getmasternode <id>"
+    , "Print status for one bonded validator (masternode-like node)."
+    );
+  m_command_lookup.set_handler(
+      "getmasternode_payment"
+    , std::bind(&t_command_parser_executor::print_masternode_payments, &m_parser, p::_1)
+    , "getmasternode_payment <id> [from_height] [to_height]"
+    , "Print bonded-validator payment history for one id."
+    );
+  m_command_lookup.set_handler(
+      "getmasternode_payments"
+    , std::bind(&t_command_parser_executor::print_masternode_payments, &m_parser, p::_1)
+    , "getmasternode_payments <id> [from_height] [to_height]"
+    , "Print bonded-validator payment history for one id."
+    );
+  m_command_lookup.set_handler(
       "print_tx"
     , std::bind(&t_command_parser_executor::print_transaction, &m_parser, p::_1)
     , "print_tx <transaction_hash> [+hex] [+json]"

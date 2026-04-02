@@ -241,6 +241,7 @@ const char* const LMDB_HF_STARTING_HEIGHTS = "hf_starting_heights";
 const char* const LMDB_HF_VERSIONS = "hf_versions";
 
 const char* const LMDB_PROPERTIES = "properties";
+const char* const LMDB_MASTERNODE_PREFIX = "masternode:";
 
 const char zerokey[8] = {0};
 const MDB_val zerokval = { sizeof(zerokey), (void *)zerokey };
@@ -2434,6 +2435,75 @@ bool BlockchainLMDB::for_all_alt_blocks(std::function<bool(const crypto::hash&, 
   TXN_POSTFIX_RDONLY();
 
   return ret;
+}
+
+void BlockchainLMDB::set_masternode_blob(const std::string& id, const cryptonote::blobdata& blob)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  CURSOR(properties);
+
+  const std::string key = std::string(LMDB_MASTERNODE_PREFIX) + id;
+  MDB_val_set(k, key);
+  MDB_val_set(v, blob);
+  const int result = mdb_cursor_put(m_cur_properties, &k, &v, 0);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to set masternode blob: ", result).c_str()));
+}
+
+bool BlockchainLMDB::get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  TXN_PREFIX_RDONLY();
+  RCURSOR(properties);
+
+  const std::string key = std::string(LMDB_MASTERNODE_PREFIX) + id;
+  MDB_val_set(k, key);
+  MDB_val v;
+  const int result = mdb_cursor_get(m_cur_properties, &k, &v, MDB_SET);
+  if (result == MDB_NOTFOUND)
+    return false;
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to get masternode blob: ", result).c_str()));
+
+  blob.assign(static_cast<const char*>(v.mv_data), v.mv_size);
+  TXN_POSTFIX_RDONLY();
+  return true;
+}
+
+bool BlockchainLMDB::for_all_masternode_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  TXN_PREFIX_RDONLY();
+  RCURSOR(properties);
+
+  const std::string prefix = LMDB_MASTERNODE_PREFIX;
+  MDB_val_set(k, prefix);
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_properties, &k, &v, MDB_SET_RANGE);
+  while (result == 0)
+  {
+    const std::string key(static_cast<const char*>(k.mv_data), k.mv_size);
+    if (key.compare(0, prefix.size(), prefix) != 0)
+      break;
+    const std::string id = key.substr(prefix.size());
+    const cryptonote::blobdata blob(static_cast<const char*>(v.mv_data), v.mv_size);
+    if (!f(id, blob))
+    {
+      TXN_POSTFIX_RDONLY();
+      return false;
+    }
+    result = mdb_cursor_get(m_cur_properties, &k, &v, MDB_NEXT);
+  }
+
+  if (result != 0 && result != MDB_NOTFOUND)
+    throw0(DB_ERROR(lmdb_error("Failed to enumerate masternode blobs: ", result).c_str()));
+
+  TXN_POSTFIX_RDONLY();
+  return true;
 }
 
 bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t *height) const

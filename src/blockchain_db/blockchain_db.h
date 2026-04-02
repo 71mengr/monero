@@ -1784,6 +1784,33 @@ public:
    */
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const = 0;
 
+  /**
+   * @brief stores serialized masternode state by id
+   *
+   * @param id masternode id
+   * @param blob serialized masternode state blob
+   */
+  virtual void set_masternode_blob(const std::string& id, const cryptonote::blobdata& blob) = 0;
+
+  /**
+   * @brief retrieves serialized masternode state by id
+   *
+   * @param id masternode id
+   * @param blob output serialized state blob
+   *
+   * @return true if found
+   */
+  virtual bool get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const = 0;
+
+  /**
+   * @brief iterate over all serialized masternode states
+   *
+   * @param f callback receiving (id, blob)
+   *
+   * @return false if callback returns false, otherwise true
+   */
+  virtual bool for_all_masternode_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const = 0;
+
 
   //
   // Hard fork related storage

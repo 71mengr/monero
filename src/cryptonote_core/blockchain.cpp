@@ -61,6 +61,7 @@
 #include "common/pruning.h"
 #include "common/data_cache.h"
 #include "time_helper.h"
+#include "serialization/binary_utils.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain"
@@ -88,6 +89,19 @@ DISABLE_VS_WARNINGS(4267)
 
 // used to overestimate the block reward when estimating a per kB to use
 #define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)
+
+namespace
+{
+bool serialize_masternode_blob(const cryptonote::bonded_validator_info& masternode, cryptonote::blobdata& blob)
+{
+  return epee::serialization::store_t_to_binary(masternode, blob);
+}
+
+bool deserialize_masternode_blob(const cryptonote::blobdata& blob, cryptonote::bonded_validator_info& masternode)
+{
+  return epee::serialization::load_t_from_binary(masternode, blob);
+}
+}
 
 //------------------------------------------------------------------
 Blockchain::Blockchain(tx_memory_pool& tx_pool) :
@@ -366,6 +380,21 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
 
   db_rtxn_guard rtxn_guard(m_db);
+
+  m_masternode_db.clear();
+  m_db->for_all_masternode_blobs([this](const std::string& id, const cryptonote::blobdata& blob)
+  {
+    bonded_validator_info info{};
+    if (!deserialize_masternode_blob(blob, info))
+    {
+      MWARNING("Failed to deserialize masternode blob for id " << id << ", skipping record");
+      return true;
+    }
+    if (info.id.empty())
+      info.id = id;
+    m_masternode_db[info.id] = std::move(info);
+    return true;
+  });
 
   // check how far behind we are
   uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
@@ -2250,17 +2279,35 @@ void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_inf
     return;
 
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  const uint64_t current_height = m_db->height();
+  const uint64_t now = static_cast<uint64_t>(time(nullptr));
   for (const auto& masternode : masternodes)
   {
     if (masternode.id.empty())
       continue;
 
     auto updated = masternode;
+    const auto existing = m_masternode_db.find(updated.id);
+    const bool has_existing = existing != m_masternode_db.end();
     updated.online = updated.online || updated.active;
     if (!updated.online)
       ++updated.penalty_points;
 
+    if (updated.registration_height == 0 && has_existing)
+      updated.registration_height = existing->second.registration_height;
+    if (updated.created_height == 0)
+      updated.created_height = has_existing ? existing->second.created_height : (updated.registration_height ? updated.registration_height : current_height);
+    if (updated.created_timestamp == 0)
+      updated.created_timestamp = has_existing ? existing->second.created_timestamp : now;
+    updated.updated_height = current_height;
+    updated.updated_timestamp = now;
+
     m_masternode_db[updated.id] = std::move(updated);
+    cryptonote::blobdata blob;
+    if (serialize_masternode_blob(m_masternode_db[masternode.id], blob))
+      m_db->set_masternode_blob(masternode.id, blob);
+    else
+      MWARNING("Failed to serialize masternode state for id " << masternode.id);
   }
 }
 //------------------------------------------------------------------

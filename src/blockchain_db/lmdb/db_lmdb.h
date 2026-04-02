@@ -311,6 +311,9 @@ public:
   virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const;
   virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
+  virtual void set_masternode_blob(const std::string& id, const cryptonote::blobdata& blob);
+  virtual bool get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const;
+  virtual bool for_all_masternode_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const;
 
   virtual uint64_t add_block( const std::pair<block, blobdata>& blk
                             , size_t block_weight

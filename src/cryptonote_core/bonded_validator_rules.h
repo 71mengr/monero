@@ -7,6 +7,7 @@
 
 #include "crypto/hash.h"
 #include "serialization/keyvalue_serialization.h"
+#include "serialization/serialization.h"
 
 namespace cryptonote
 {
@@ -40,6 +41,25 @@ namespace cryptonote
     uint64_t updated_height = 0;
     uint64_t created_timestamp = 0;
     uint64_t updated_timestamp = 0;
+
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(id)
+      FIELD(operator_key)
+      FIELD(collateral_txid)
+      FIELD(collateral_amount)
+      FIELD(registration_height)
+      FIELD(lock_end_height)
+      FIELD(last_uptime_proof_height)
+      FIELD(missed_duties)
+      FIELD(penalty_points)
+      FIELD(active)
+      FIELD(online)
+      FIELD(deregistered)
+      FIELD(created_height)
+      FIELD(updated_height)
+      FIELD(created_timestamp)
+      FIELD(updated_timestamp)
+    END_SERIALIZE()
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(id)

@@ -51,6 +51,7 @@
 #include "common/perf_timer.h"
 #include "crypto/hash.h"
 #include "crypto/duration.h"
+#include "bonded_validator_rules.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "txpool"
@@ -162,6 +163,16 @@ namespace cryptonote
         return false;
 
       if (registration.collateral_amount != MASTERNODE_COLLATERAL_EXACT_AMOUNT)
+        return false;
+
+      collateral_registration_tx_payload checklist_payload{};
+      checklist_payload.collateral_amount = registration.collateral_amount;
+      checklist_payload.lock_start_height = blockchain.get_current_blockchain_height();
+      checklist_payload.min_lock_blocks = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+      checklist_payload.operator_key = epee::string_tools::pod_to_hex(registration.operator_pubkey);
+      checklist_payload.service_endpoints.push_back(epee::string_tools::pod_to_hex(registration.service_endpoint_commitment));
+      checklist_payload.metadata_commitment = registration.service_endpoint_commitment;
+      if (!checklist_payload.is_valid())
         return false;
 
       if (collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)

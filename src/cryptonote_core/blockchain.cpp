@@ -56,6 +56,7 @@
 #include "warnings.h"
 #include "crypto/hash.h"
 #include "cryptonote_core.h"
+#include "bonded_validator_rules.h"
 #include "ringct/rctSigs.h"
 #include "common/perf_timer.h"
 #include "common/notify.h"
@@ -167,6 +168,18 @@ bool validate_masternode_registration_rules_for_block(
     if (registration.version != cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION)
       return false;
     if (!crypto::check_key(registration.operator_pubkey))
+      return false;
+    if (registration.service_endpoint_commitment == crypto::null_hash)
+      return false;
+
+    collateral_registration_tx_payload checklist_payload{};
+    checklist_payload.collateral_amount = registration.collateral_amount;
+    checklist_payload.lock_start_height = block_height;
+    checklist_payload.min_lock_blocks = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+    checklist_payload.operator_key = operator_key;
+    checklist_payload.service_endpoints.push_back(epee::string_tools::pod_to_hex(registration.service_endpoint_commitment));
+    checklist_payload.metadata_commitment = registration.service_endpoint_commitment;
+    if (!checklist_payload.is_valid())
       return false;
 
     // (b) uniqueness checks against resulting state and within block

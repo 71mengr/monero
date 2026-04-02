@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "cryptonote_core/bonded_validator_rules.h"
+#include "storages/portable_storage.h"
 
 namespace
 {
@@ -32,6 +33,59 @@ TEST(bonded_validator_rules, collateral_payload_validation)
 
   payload.service_endpoints = {"   "};
   ASSERT_FALSE(payload.is_valid(&reason));
+
+  payload.service_endpoints = {"tcp://1.2.3.4:18080", " tcp://1.2.3.4:18080 "};
+  ASSERT_FALSE(payload.is_valid(&reason));
+}
+
+TEST(bonded_validator_rules, bonded_validator_info_encoding_round_trip)
+{
+  cryptonote::bonded_validator_info original{};
+  original.id = "validator-1";
+  original.operator_key = "op-key";
+  original.collateral_txid = "txid";
+  original.collateral_amount = 123456789;
+  original.registration_height = 222;
+  original.lock_end_height = 999;
+  original.last_uptime_proof_height = 345;
+  original.missed_duties = 2;
+  original.penalty_points = 1;
+  original.active = true;
+  original.online = true;
+  original.deregistered = false;
+  original.created_height = 200;
+  original.updated_height = 300;
+  original.created_timestamp = 1710000000;
+  original.updated_timestamp = 1710001000;
+
+  epee::serialization::portable_storage stg{};
+  ASSERT_TRUE(original.store(stg));
+
+  epee::byte_slice buffer{};
+  ASSERT_TRUE(stg.store_to_binary(buffer));
+
+  epee::serialization::portable_storage decoded_stg{};
+  ASSERT_TRUE(decoded_stg.load_from_binary(epee::to_span(buffer)));
+
+  cryptonote::bonded_validator_info decoded{};
+  ASSERT_TRUE(decoded.load(decoded_stg));
+
+  ASSERT_EQ(decoded.id, original.id);
+  ASSERT_EQ(decoded.operator_key, original.operator_key);
+  ASSERT_EQ(decoded.collateral_txid, original.collateral_txid);
+  ASSERT_EQ(decoded.collateral_amount, original.collateral_amount);
+  ASSERT_EQ(decoded.registration_height, original.registration_height);
+  ASSERT_EQ(decoded.lock_end_height, original.lock_end_height);
+  ASSERT_EQ(decoded.last_uptime_proof_height, original.last_uptime_proof_height);
+  ASSERT_EQ(decoded.missed_duties, original.missed_duties);
+  ASSERT_EQ(decoded.penalty_points, original.penalty_points);
+  ASSERT_EQ(decoded.active, original.active);
+  ASSERT_EQ(decoded.online, original.online);
+  ASSERT_EQ(decoded.deregistered, original.deregistered);
+  ASSERT_EQ(decoded.created_height, original.created_height);
+  ASSERT_EQ(decoded.updated_height, original.updated_height);
+  ASSERT_EQ(decoded.created_timestamp, original.created_timestamp);
+  ASSERT_EQ(decoded.updated_timestamp, original.updated_timestamp);
 }
 
 TEST(bonded_validator_rules, deterministic_active_set_selection)
@@ -59,6 +113,62 @@ TEST(bonded_validator_rules, deterministic_active_set_selection)
   }
 }
 
+TEST(bonded_validator_rules, active_set_deduplicates_validator_ids)
+{
+  auto one = make_validator("dup", 5000, 800);
+  one.registration_height = 100;
+  auto two = make_validator("dup", 6000, 900);
+  two.registration_height = 100;
+  auto three = make_validator("uniq", 7000, 900);
+  three.registration_height = 100;
+
+  std::vector<cryptonote::bonded_validator_info> validators{one, two, three};
+  const crypto::hash randomness = crypto::cn_fast_hash("dedupe-seed", 11);
+
+  const auto set = cryptonote::select_active_validator_set(
+      validators, 10, 300, 3, randomness, 1000, 50, 50, 10);
+
+  ASSERT_EQ(set.size(), 2);
+  ASSERT_NE(set[0].id, set[1].id);
+}
+
+TEST(bonded_validator_rules, reward_split_accept_reject_vectors)
+{
+  const auto capped = cryptonote::compute_reward_split(1000, 10, 20, 10001);
+  ASSERT_EQ(capped.validator_reward, 1000);
+  ASSERT_EQ(capped.miner_reward, 0);
+
+  const auto zero = cryptonote::compute_reward_split(1000, 10, 20, 0);
+  ASSERT_EQ(zero.validator_reward, 0);
+  ASSERT_EQ(zero.miner_reward, 1000);
+}
+
+TEST(bonded_validator_rules, active_set_reorg_rollback_is_deterministic)
+{
+  auto a = make_validator("a", 2000, 700);
+  a.registration_height = 100;
+  auto b = make_validator("b", 2000, 700);
+  b.registration_height = 100;
+  auto c = make_validator("c", 2000, 700);
+  c.registration_height = 260;
+
+  std::vector<cryptonote::bonded_validator_info> validators{a, b, c};
+  const crypto::hash randomness = crypto::cn_fast_hash("reorg-seed", 10);
+
+  const auto pre_reorg = cryptonote::select_active_validator_set(
+      validators, 1, 240, 2, randomness, 1000, 50, 50, 10);
+  const auto post_reorg = cryptonote::select_active_validator_set(
+      validators, 1, 320, 2, randomness, 1000, 50, 50, 10);
+  const auto rollback = cryptonote::select_active_validator_set(
+      validators, 1, 240, 2, randomness, 1000, 50, 50, 10);
+
+  ASSERT_EQ(pre_reorg.size(), rollback.size());
+  ASSERT_EQ(pre_reorg[0].id, rollback[0].id);
+  ASSERT_EQ(pre_reorg[1].id, rollback[1].id);
+
+  ASSERT_EQ(post_reorg.size(), 2);
+}
+
 TEST(bonded_validator_rules, reward_eligible_height_is_registration_plus_delay)
 {
   ASSERT_EQ(cryptonote::compute_reward_eligible_height(100, 25), 125);
@@ -79,6 +189,20 @@ TEST(bonded_validator_rules, reward_split_preserves_invariants)
   const uint64_t total_paid = split.validator_reward + split.miner_reward + split.tx_fees + split.tail_emission;
   const uint64_t total_expected = 10'000'000'000ULL + 1'000'000ULL + 600'000'000ULL;
   ASSERT_EQ(total_paid, total_expected);
+}
+
+TEST(bonded_validator_rules, reward_split_preserves_invariants_across_basis_points)
+{
+  for (uint16_t basis_points : {0, 1, 2500, 5000, 9999, 10000, 12000})
+  {
+    const uint64_t base = 12'345'678'901ULL;
+    const uint64_t fees = 998'877ULL;
+    const uint64_t tail = 600'000'000ULL;
+    const auto split = cryptonote::compute_reward_split(base, fees, tail, basis_points);
+
+    const uint64_t paid = split.validator_reward + split.miner_reward + split.tx_fees + split.tail_emission;
+    ASSERT_EQ(paid, base + fees + tail);
+  }
 }
 
 TEST(bonded_validator_rules, activation_delay_and_penalties_gate_active_set)

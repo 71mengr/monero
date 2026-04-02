@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <unordered_set>
 
 #include "string_tools.h"
 
@@ -92,11 +93,19 @@ namespace cryptonote
       if (reason) *reason = "at least one service endpoint is required";
       return false;
     }
+    std::unordered_set<std::string> normalized_endpoints;
+    normalized_endpoints.reserve(service_endpoints.size());
     for (const std::string& endpoint : service_endpoints)
     {
-      if (!non_empty_trimmed(endpoint))
+      const std::string trimmed = epee::string_tools::trim(endpoint);
+      if (trimmed.empty())
       {
         if (reason) *reason = "service endpoint entries must be non-empty";
+        return false;
+      }
+      if (!normalized_endpoints.insert(trimmed).second)
+      {
+        if (reason) *reason = "duplicate service endpoint entries are not allowed";
         return false;
       }
     }
@@ -222,7 +231,17 @@ namespace cryptonote
     if (eligible.size() > active_count)
       eligible.resize(active_count);
 
-    return eligible;
+    std::vector<bonded_validator_info> unique;
+    unique.reserve(eligible.size());
+    std::unordered_set<std::string> seen_ids;
+    seen_ids.reserve(eligible.size());
+    for (const auto& validator : eligible)
+    {
+      if (seen_ids.insert(validator.id).second)
+        unique.push_back(validator);
+    }
+
+    return unique;
   }
 
   reward_split_result compute_reward_split(

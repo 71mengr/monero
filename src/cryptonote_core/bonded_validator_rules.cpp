@@ -272,6 +272,69 @@ namespace cryptonote
     return !validator_is_penalized(validator.missed_duties + validator.penalty_points, missed_duties_threshold);
   }
 
+  bool penalty_criteria_is_valid(const deregistration_penalty_criteria& criteria, std::string* reason)
+  {
+    const bool ordered = criteria.warn_threshold_bps <= criteria.penalty_threshold_bps &&
+                         criteria.penalty_threshold_bps <= criteria.deregister_threshold_bps &&
+                         criteria.deregister_threshold_bps <= 10000;
+    if (!ordered)
+    {
+      if (reason) *reason = "penalty thresholds must satisfy warn <= penalty <= deregister <= 10000";
+      return false;
+    }
+    return true;
+  }
+
+  uint16_t compute_miss_ratio_bps(uint64_t assigned_duties, uint64_t missed_duties)
+  {
+    if (assigned_duties == 0 || missed_duties == 0)
+      return 0;
+
+    if (missed_duties >= assigned_duties)
+      return 10000;
+
+    return static_cast<uint16_t>((10000ULL * missed_duties) / assigned_duties);
+  }
+
+  duty_enforcement_result evaluate_duty_enforcement(
+      uint16_t miss_ratio_bps,
+      uint64_t confirmations,
+      const deregistration_penalty_criteria& criteria)
+  {
+    duty_enforcement_result result{};
+    if (miss_ratio_bps < criteria.warn_threshold_bps)
+      return result;
+
+    if (miss_ratio_bps < criteria.penalty_threshold_bps)
+    {
+      result.state = duty_enforcement_state::warning;
+      return result;
+    }
+
+    if (miss_ratio_bps < criteria.deregister_threshold_bps)
+    {
+      result.state = duty_enforcement_state::penalty;
+      const uint16_t penalty_floor = criteria.penalty_threshold_bps;
+      const uint16_t penalty_span = criteria.deregister_threshold_bps - penalty_floor;
+      if (penalty_span == 0)
+      {
+        result.haircut_bps = 10000;
+        return result;
+      }
+
+      const uint16_t distance = miss_ratio_bps - penalty_floor;
+      result.haircut_bps = static_cast<uint16_t>(
+          (static_cast<uint32_t>(distance) * 10000U) / penalty_span);
+      return result;
+    }
+
+    result.state = confirmations >= criteria.dereg_finality_depth
+                       ? duty_enforcement_state::deregistered
+                       : duty_enforcement_state::deregistered_pending_finality;
+    result.haircut_bps = 10000;
+    return result;
+  }
+
   uint64_t compute_unlock_height(
       const bonded_validator_info& validator,
       uint64_t current_height,

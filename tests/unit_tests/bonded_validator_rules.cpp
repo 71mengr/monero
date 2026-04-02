@@ -163,3 +163,53 @@ TEST(bonded_validator_rules, proof_formats)
   dereg.signatures.clear();
   ASSERT_FALSE(dereg.is_well_formed(1, &reason));
 }
+
+TEST(bonded_validator_rules, deregistration_penalty_criteria_validation_and_miss_ratio)
+{
+  cryptonote::deregistration_penalty_criteria criteria{};
+  criteria.warn_threshold_bps = 1000;
+  criteria.penalty_threshold_bps = 2500;
+  criteria.deregister_threshold_bps = 6000;
+  criteria.dereg_finality_depth = 20;
+
+  std::string reason;
+  ASSERT_TRUE(cryptonote::penalty_criteria_is_valid(criteria, &reason)) << reason;
+
+  criteria.penalty_threshold_bps = 900;
+  ASSERT_FALSE(cryptonote::penalty_criteria_is_valid(criteria, &reason));
+
+  ASSERT_EQ(cryptonote::compute_miss_ratio_bps(0, 10), 0);
+  ASSERT_EQ(cryptonote::compute_miss_ratio_bps(100, 10), 1000);
+  ASSERT_EQ(cryptonote::compute_miss_ratio_bps(100, 100), 10000);
+  ASSERT_EQ(cryptonote::compute_miss_ratio_bps(100, 120), 10000);
+}
+
+TEST(bonded_validator_rules, evaluate_duty_enforcement_states)
+{
+  cryptonote::deregistration_penalty_criteria criteria{};
+  criteria.warn_threshold_bps = 1000;
+  criteria.penalty_threshold_bps = 2500;
+  criteria.deregister_threshold_bps = 6000;
+  criteria.dereg_finality_depth = 12;
+
+  auto result = cryptonote::evaluate_duty_enforcement(500, 0, criteria);
+  ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::none);
+  ASSERT_EQ(result.haircut_bps, 0);
+
+  result = cryptonote::evaluate_duty_enforcement(1500, 0, criteria);
+  ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::warning);
+  ASSERT_EQ(result.haircut_bps, 0);
+
+  result = cryptonote::evaluate_duty_enforcement(4000, 0, criteria);
+  ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::penalty);
+  ASSERT_GT(result.haircut_bps, 0);
+  ASSERT_LT(result.haircut_bps, 10000);
+
+  result = cryptonote::evaluate_duty_enforcement(6500, 11, criteria);
+  ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::deregistered_pending_finality);
+  ASSERT_EQ(result.haircut_bps, 10000);
+
+  result = cryptonote::evaluate_duty_enforcement(6500, 12, criteria);
+  ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::deregistered);
+  ASSERT_EQ(result.haircut_bps, 10000);
+}

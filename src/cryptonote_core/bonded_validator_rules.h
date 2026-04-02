@@ -68,6 +68,29 @@ namespace cryptonote
     uint64_t tx_fees = 0;
   };
 
+  struct deregistration_penalty_criteria
+  {
+    uint16_t warn_threshold_bps = 0;
+    uint16_t penalty_threshold_bps = 0;
+    uint16_t deregister_threshold_bps = 0;
+    uint64_t dereg_finality_depth = 0;
+  };
+
+  enum class duty_enforcement_state : uint8_t
+  {
+    none = 0,
+    warning = 1,
+    penalty = 2,
+    deregistered_pending_finality = 3,
+    deregistered = 4,
+  };
+
+  struct duty_enforcement_result
+  {
+    duty_enforcement_state state = duty_enforcement_state::none;
+    uint16_t haircut_bps = 0;
+  };
+
   struct deregistration_proof
   {
     std::string validator_id;
@@ -128,6 +151,17 @@ namespace cryptonote
   bool validator_is_penalized(uint32_t missed_duties, uint32_t missed_duties_threshold);
 
   bool validator_is_reward_eligible(const bonded_validator_info& validator, uint32_t missed_duties_threshold);
+
+  bool penalty_criteria_is_valid(
+      const deregistration_penalty_criteria& criteria,
+      std::string* reason = nullptr);
+
+  uint16_t compute_miss_ratio_bps(uint64_t assigned_duties, uint64_t missed_duties);
+
+  duty_enforcement_result evaluate_duty_enforcement(
+      uint16_t miss_ratio_bps,
+      uint64_t confirmations,
+      const deregistration_penalty_criteria& criteria);
 
   uint64_t compute_unlock_height(
       const bonded_validator_info& validator,

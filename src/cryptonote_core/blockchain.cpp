@@ -56,7 +56,6 @@
 #include "warnings.h"
 #include "crypto/hash.h"
 #include "cryptonote_core.h"
-#include "bonded_validator_rules.h"
 #include "ringct/rctSigs.h"
 #include "common/perf_timer.h"
 #include "common/notify.h"
@@ -162,7 +161,7 @@ bool validate_masternode_registration_rules_for_block(
 
     if (registration_count == 0)
       continue;
-    if (registration_count > 1 || registration.empty())
+    if (registration_count > 1 || !cryptonote::check_masternode_registration_payload(registration))
       return false;
 
     const crypto::hash tx_hash = get_transaction_hash(tx);
@@ -175,16 +174,6 @@ bool validate_masternode_registration_rules_for_block(
     if (!crypto::check_key(registration.operator_pubkey))
       return false;
     if (registration.service_endpoint_commitment == crypto::null_hash)
-      return false;
-
-    collateral_registration_tx_payload checklist_payload{};
-    checklist_payload.collateral_amount = registration.collateral_amount;
-    checklist_payload.lock_start_height = block_height;
-    checklist_payload.min_lock_blocks = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
-    checklist_payload.operator_key = operator_key;
-    checklist_payload.service_endpoints.push_back(epee::string_tools::pod_to_hex(registration.service_endpoint_commitment));
-    checklist_payload.metadata_commitment = registration.service_endpoint_commitment;
-    if (!checklist_payload.is_valid())
       return false;
 
     // (b) uniqueness checks against resulting state and within block
@@ -236,12 +225,34 @@ bool validate_masternode_registration_rules_for_block(
 
 bool serialize_masternode_blob(const cryptonote::bonded_validator_info& masternode, cryptonote::blobdata& blob)
 {
-  return epee::serialization::store_t_to_binary(masternode, blob);
+  return cryptonote::t_serializable_object_to_blob(masternode, blob);
 }
 
 bool deserialize_masternode_blob(const cryptonote::blobdata& blob, cryptonote::bonded_validator_info& masternode)
 {
-  return epee::serialization::load_t_from_binary(masternode, blob);
+  return cryptonote::t_serializable_object_from_blob(masternode, blob);
+}
+
+cryptonote::p2p_masternode_info make_p2p_masternode_info(const cryptonote::bonded_validator_info& masternode)
+{
+  cryptonote::p2p_masternode_info result{};
+  result.id = masternode.id;
+  result.operator_key = masternode.operator_key;
+  result.collateral_txid = masternode.collateral_txid;
+  result.collateral_amount = masternode.collateral_amount;
+  result.registration_height = masternode.registration_height;
+  result.lock_end_height = masternode.lock_end_height;
+  result.last_uptime_proof_height = masternode.last_uptime_proof_height;
+  result.missed_duties = masternode.missed_duties;
+  result.active = masternode.active;
+  result.online = masternode.online;
+  result.penalty_points = masternode.penalty_points;
+  result.deregistered = masternode.deregistered;
+  result.created_height = masternode.created_height;
+  result.updated_height = masternode.updated_height;
+  result.created_timestamp = masternode.created_timestamp;
+  result.updated_timestamp = masternode.updated_timestamp;
+  return result;
 }
 
 bool get_registration_payload_from_tx(
@@ -2564,7 +2575,7 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
   rsp.current_blockchain_height = get_current_blockchain_height();
   rsp.masternodes.reserve(m_masternode_db.size());
   for (const auto& kv : m_masternode_db)
-    rsp.masternodes.push_back(kv.second);
+    rsp.masternodes.push_back(make_p2p_masternode_info(kv.second));
   std::vector<std::pair<cryptonote::blobdata,block>> blocks;
   get_blocks(arg.blocks, blocks, rsp.missed_ids);
 

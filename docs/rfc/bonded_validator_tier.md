@@ -142,7 +142,58 @@ Proof format must be canonical and signature-verifiable on-chain.
 
 ---
 
-## 6) P2P service proofs
+## 6) Reward eligibility and payout rules
+
+Consensus must define reward eligibility and payout behavior with exact formulas
+that are reproducible from canonical chain state.
+
+### i) Activation delay after registration
+
+A newly registered validator becomes reward-eligible at:
+
+- `eligible_height = registration_height + reward_activation_delay_blocks`
+
+Where `reward_activation_delay_blocks` is a consensus parameter fixed by the
+active network version. Before `eligible_height`, the validator MAY exist in
+state but MUST NOT receive any bonded reward output.
+
+### ii) Deterministic active set per epoch
+
+For epoch `E`, the active set MUST be derived using only finalized chain data
+and deterministic randomness:
+
+1. Build `eligible_validators(E)` from on-chain validator records that satisfy:
+   - `eligible_height <= epoch_start_height(E)`
+   - collateral still locked for the required horizon
+   - not deregistered/slashed/in cooldown at `epoch_start_height(E)`
+2. Derive `epoch_randomness(E)` from a chain anchor hash at the epoch boundary
+   with domain separation (for example:
+   `H("bonded-validator-epoch-v1" || boundary_block_hash || E)`).
+3. Sort/shuffle deterministically using `(epoch_randomness(E), validator_id)`
+   and select the first `active_set_size` entries.
+
+No local wall-clock, peer-observed liveness cache, or mempool-only data may
+influence active-set membership.
+
+### iii) Deterministic coinbase reward share
+
+Miner transaction validation MUST enforce a deterministic reward split that is
+computable by every verifier from block and chain context:
+
+- `validator_share = floor(base_block_reward * validator_basis_points / 10000)`
+- `miner_share = base_block_reward - validator_share`
+- fees/tail-emission handling follows consensus-defined invariants
+
+If per-validator distribution is enabled, each recipient amount MUST be derived
+from `active_set(E)` using canonical ordering and deterministic residual
+assignment (for example, distribute remainder to lowest hash-ranked validators).
+
+The roadmap requirement is that both active-set selection and bonded reward
+allocation are pure functions of chain state plus deterministic randomness.
+
+---
+
+## 7) P2P service proofs
 
 ### Signed uptime heartbeats
 
@@ -164,7 +215,7 @@ Challenge/response remains optional initially and can be activated later.
 
 ---
 
-## 7) Non-consensus components
+## 8) Non-consensus components
 
 ### Daemon subsystem
 

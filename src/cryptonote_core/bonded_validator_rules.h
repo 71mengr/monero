@@ -23,11 +23,16 @@ namespace cryptonote
   struct bonded_validator_info
   {
     std::string id;
+    std::string operator_key;
+    std::string collateral_txid;
     uint64_t collateral_amount = 0;
     uint64_t registration_height = 0;
     uint64_t lock_end_height = 0;
     uint64_t last_uptime_proof_height = 0;
     uint32_t missed_duties = 0;
+    uint32_t penalty_points = 0;
+    bool active = false;
+    bool online = false;
     bool deregistered = false;
   };
 
@@ -83,6 +88,8 @@ namespace cryptonote
       uint16_t validator_basis_points);
 
   bool validator_is_penalized(uint32_t missed_duties, uint32_t missed_duties_threshold);
+
+  bool validator_is_reward_eligible(const bonded_validator_info& validator, uint32_t missed_duties_threshold);
 
   uint64_t compute_unlock_height(
       const bonded_validator_info& validator,

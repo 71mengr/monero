@@ -2254,7 +2254,13 @@ void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_inf
   {
     if (masternode.id.empty())
       continue;
-    m_masternode_db[masternode.id] = masternode;
+
+    auto updated = masternode;
+    updated.online = updated.online || updated.active;
+    if (!updated.online)
+      ++updated.penalty_points;
+
+    m_masternode_db[updated.id] = std::move(updated);
   }
 }
 //------------------------------------------------------------------
@@ -2266,7 +2272,7 @@ std::vector<bonded_validator_info> Blockchain::get_masternodes(bool include_inac
 
   for (const auto& kv : m_masternode_db)
   {
-    if (!include_inactive && !kv.second.active)
+    if (!include_inactive && (!kv.second.active || !kv.second.online))
       continue;
     masternodes.push_back(kv.second);
   }

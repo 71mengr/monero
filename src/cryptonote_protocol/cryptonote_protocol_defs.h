@@ -174,6 +174,7 @@ namespace cryptonote
     uint64_t registration_height = 0;
     uint64_t last_uptime_proof_height = 0;
     bool active = false;
+    bool online = false;
     uint32_t penalty_points = 0;
 
     BEGIN_KV_SERIALIZE_MAP()
@@ -184,6 +185,7 @@ namespace cryptonote
       KV_SERIALIZE(registration_height)
       KV_SERIALIZE(last_uptime_proof_height)
       KV_SERIALIZE(active)
+      KV_SERIALIZE(online)
       KV_SERIALIZE(penalty_points)
     END_KV_SERIALIZE_MAP()
   };

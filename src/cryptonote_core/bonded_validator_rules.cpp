@@ -161,6 +161,8 @@ namespace cryptonote
     {
       if (validator.deregistered || validator.collateral_amount < min_collateral)
         continue;
+      if (!validator.online)
+        continue;
       if (validator.lock_end_height < epoch || (validator.lock_end_height - epoch) < min_remaining_lock_blocks)
         continue;
       eligible.push_back(validator);
@@ -215,6 +217,14 @@ namespace cryptonote
   bool validator_is_penalized(uint32_t missed_duties, uint32_t missed_duties_threshold)
   {
     return missed_duties_threshold > 0 && missed_duties >= missed_duties_threshold;
+  }
+
+  bool validator_is_reward_eligible(const bonded_validator_info& validator, uint32_t missed_duties_threshold)
+  {
+    if (!validator.active || !validator.online || validator.deregistered)
+      return false;
+
+    return !validator_is_penalized(validator.missed_duties + validator.penalty_points, missed_duties_threshold);
   }
 
   uint64_t compute_unlock_height(

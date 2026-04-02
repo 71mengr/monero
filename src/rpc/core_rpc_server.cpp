@@ -975,6 +975,7 @@ namespace cryptonote
       entry.registration_height = masternode.registration_height;
       entry.last_uptime_proof_height = masternode.last_uptime_proof_height;
       entry.active = masternode.active;
+      entry.online = masternode.online;
       entry.penalty_points = masternode.penalty_points;
       res.validators.push_back(std::move(entry));
     }
@@ -1006,6 +1007,7 @@ namespace cryptonote
       res.validator.registration_height = masternode.registration_height;
       res.validator.last_uptime_proof_height = masternode.last_uptime_proof_height;
       res.validator.active = masternode.active;
+      res.validator.online = masternode.online;
       res.validator.penalty_points = masternode.penalty_points;
     }
     res.status = CORE_RPC_STATUS_OK;

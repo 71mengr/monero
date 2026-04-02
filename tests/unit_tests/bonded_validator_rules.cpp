@@ -10,6 +10,8 @@ namespace
     v.id = id;
     v.collateral_amount = collateral;
     v.lock_end_height = lock_end;
+    v.active = true;
+    v.online = true;
     return v;
   }
 }
@@ -75,6 +77,20 @@ TEST(bonded_validator_rules, penalty_and_unlock_rules)
 {
   ASSERT_TRUE(cryptonote::validator_is_penalized(10, 10));
   ASSERT_FALSE(cryptonote::validator_is_penalized(9, 10));
+
+  cryptonote::bonded_validator_info eligible{};
+  eligible.active = true;
+  eligible.online = true;
+  eligible.missed_duties = 2;
+  eligible.penalty_points = 1;
+  ASSERT_TRUE(cryptonote::validator_is_reward_eligible(eligible, 5));
+
+  eligible.online = false;
+  ASSERT_FALSE(cryptonote::validator_is_reward_eligible(eligible, 5));
+
+  eligible.online = true;
+  eligible.penalty_points = 4;
+  ASSERT_FALSE(cryptonote::validator_is_reward_eligible(eligible, 5));
 
   cryptonote::bonded_validator_info v{};
   v.lock_end_height = 1000;

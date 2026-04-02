@@ -9,6 +9,7 @@ namespace
     cryptonote::bonded_validator_info v{};
     v.id = id;
     v.collateral_amount = collateral;
+    v.registration_height = 100;
     v.lock_end_height = lock_end;
     v.active = true;
     v.online = true;
@@ -42,8 +43,8 @@ TEST(bonded_validator_rules, deterministic_active_set_selection)
       make_validator("d", 100, 500)};
 
   const crypto::hash randomness = crypto::cn_fast_hash("epoch-seed", 10);
-  const auto set1 = cryptonote::select_active_validator_set(validators, 300, 2, randomness, 1000, 100);
-  const auto set2 = cryptonote::select_active_validator_set(validators, 300, 2, randomness, 1000, 100);
+  const auto set1 = cryptonote::select_active_validator_set(validators, 300, 300, 2, randomness, 1000, 100, 50, 10);
+  const auto set2 = cryptonote::select_active_validator_set(validators, 300, 300, 2, randomness, 1000, 100, 50, 10);
 
   ASSERT_EQ(set1.size(), 2);
   ASSERT_EQ(set2.size(), 2);
@@ -54,7 +55,14 @@ TEST(bonded_validator_rules, deterministic_active_set_selection)
   {
     ASSERT_GE(v.collateral_amount, 1000);
     ASSERT_GE(v.lock_end_height - 300, 100);
+    ASSERT_LE(v.registration_height + 50, 300);
   }
+}
+
+TEST(bonded_validator_rules, reward_eligible_height_is_registration_plus_delay)
+{
+  ASSERT_EQ(cryptonote::compute_reward_eligible_height(100, 25), 125);
+  ASSERT_EQ(cryptonote::compute_reward_eligible_height(0, 0), 0);
 }
 
 TEST(bonded_validator_rules, reward_split_preserves_invariants)
@@ -66,11 +74,44 @@ TEST(bonded_validator_rules, reward_split_preserves_invariants)
       5000);
 
   ASSERT_EQ(split.validator_reward, 5'000'000'000ULL);
-  ASSERT_EQ(split.miner_reward, 5'001'000'000ULL);
+  ASSERT_EQ(split.miner_reward, 5'000'000'000ULL);
 
-  const uint64_t total_paid = split.validator_reward + split.miner_reward + split.tail_emission;
+  const uint64_t total_paid = split.validator_reward + split.miner_reward + split.tx_fees + split.tail_emission;
   const uint64_t total_expected = 10'000'000'000ULL + 1'000'000ULL + 600'000'000ULL;
   ASSERT_EQ(total_paid, total_expected);
+}
+
+TEST(bonded_validator_rules, activation_delay_and_penalties_gate_active_set)
+{
+  auto eligible = make_validator("eligible", 2000, 1000);
+  eligible.registration_height = 200;
+  eligible.missed_duties = 1;
+  eligible.penalty_points = 1;
+
+  auto too_new = make_validator("too_new", 2000, 1000);
+  too_new.registration_height = 280;
+
+  auto penalized = make_validator("penalized", 2000, 1000);
+  penalized.registration_height = 200;
+  penalized.missed_duties = 7;
+  penalized.penalty_points = 5;
+
+  std::vector<cryptonote::bonded_validator_info> validators{eligible, too_new, penalized};
+  const crypto::hash randomness = crypto::cn_fast_hash("epoch-seed-2", 12);
+
+  const auto set = cryptonote::select_active_validator_set(
+      validators,
+      12,
+      300,
+      5,
+      randomness,
+      1000,
+      50,
+      50,
+      10);
+
+  ASSERT_EQ(set.size(), 1);
+  ASSERT_EQ(set.front().id, "eligible");
 }
 
 TEST(bonded_validator_rules, penalty_and_unlock_rules)
@@ -86,11 +127,17 @@ TEST(bonded_validator_rules, penalty_and_unlock_rules)
   ASSERT_TRUE(cryptonote::validator_is_reward_eligible(eligible, 5));
 
   eligible.online = false;
-  ASSERT_FALSE(cryptonote::validator_is_reward_eligible(eligible, 5));
+  ASSERT_TRUE(cryptonote::validator_is_reward_eligible(eligible, 5));
 
   eligible.online = true;
   eligible.penalty_points = 4;
   ASSERT_FALSE(cryptonote::validator_is_reward_eligible(eligible, 5));
+
+  eligible.penalty_points = 1;
+  eligible.registration_height = 100;
+  eligible.lock_end_height = 300;
+  ASSERT_TRUE(cryptonote::validator_is_reward_eligible_at_height(eligible, 200, 50, 50, 5));
+  ASSERT_FALSE(cryptonote::validator_is_reward_eligible_at_height(eligible, 140, 50, 50, 5));
 
   cryptonote::bonded_validator_info v{};
   v.lock_end_height = 1000;

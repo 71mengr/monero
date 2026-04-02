@@ -100,10 +100,24 @@ namespace cryptonote
   std::vector<bonded_validator_info> select_active_validator_set(
       const std::vector<bonded_validator_info>& validators,
       uint64_t epoch,
+      uint64_t epoch_start_height,
       size_t active_count,
       const crypto::hash& chain_randomness,
       uint64_t min_collateral,
-      uint64_t min_remaining_lock_blocks);
+      uint64_t min_remaining_lock_blocks,
+      uint64_t reward_activation_delay_blocks,
+      uint32_t missed_duties_threshold);
+
+  uint64_t compute_reward_eligible_height(
+      uint64_t registration_height,
+      uint64_t reward_activation_delay_blocks);
+
+  bool validator_is_reward_eligible_at_height(
+      const bonded_validator_info& validator,
+      uint64_t height,
+      uint64_t min_remaining_lock_blocks,
+      uint64_t reward_activation_delay_blocks,
+      uint32_t missed_duties_threshold);
 
   reward_split_result compute_reward_split(
       uint64_t base_block_reward,

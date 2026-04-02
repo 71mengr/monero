@@ -19,8 +19,10 @@ namespace
 
   crypto::hash derive_selection_hash(const cryptonote::bonded_validator_info& v, uint64_t epoch, const crypto::hash& randomness)
   {
+    static constexpr const char* domain = "bonded-validator-epoch-v1";
     std::string seed;
-    seed.reserve(v.id.size() + sizeof(epoch) + sizeof(randomness));
+    seed.reserve(std::strlen(domain) + v.id.size() + sizeof(epoch) + sizeof(randomness));
+    seed.append(domain);
     seed.append(v.id);
     seed.append(reinterpret_cast<const char*>(&epoch), sizeof(epoch));
     seed.append(reinterpret_cast<const char*>(&randomness), sizeof(randomness));
@@ -35,6 +37,39 @@ namespace
 
 namespace cryptonote
 {
+  uint64_t compute_reward_eligible_height(
+      uint64_t registration_height,
+      uint64_t reward_activation_delay_blocks)
+  {
+    uint64_t eligible_height = 0;
+    if (add_overflow(registration_height, reward_activation_delay_blocks, eligible_height))
+      return std::numeric_limits<uint64_t>::max();
+    return eligible_height;
+  }
+
+  bool validator_is_reward_eligible_at_height(
+      const bonded_validator_info& validator,
+      uint64_t height,
+      uint64_t min_remaining_lock_blocks,
+      uint64_t reward_activation_delay_blocks,
+      uint32_t missed_duties_threshold)
+  {
+    if (validator.deregistered || !validator.active)
+      return false;
+    if (validator.collateral_amount == 0)
+      return false;
+
+    const uint64_t eligible_height = compute_reward_eligible_height(
+        validator.registration_height, reward_activation_delay_blocks);
+    if (eligible_height > height)
+      return false;
+
+    if (validator.lock_end_height < height || (validator.lock_end_height - height) < min_remaining_lock_blocks)
+      return false;
+
+    return !validator_is_penalized(validator.missed_duties + validator.penalty_points, missed_duties_threshold);
+  }
+
   bool collateral_registration_tx_payload::is_valid(std::string* reason) const
   {
     if (collateral_amount == 0)
@@ -149,22 +184,29 @@ namespace cryptonote
   std::vector<bonded_validator_info> select_active_validator_set(
       const std::vector<bonded_validator_info>& validators,
       uint64_t epoch,
+      uint64_t epoch_start_height,
       size_t active_count,
       const crypto::hash& chain_randomness,
       uint64_t min_collateral,
-      uint64_t min_remaining_lock_blocks)
+      uint64_t min_remaining_lock_blocks,
+      uint64_t reward_activation_delay_blocks,
+      uint32_t missed_duties_threshold)
   {
     std::vector<bonded_validator_info> eligible;
     eligible.reserve(validators.size());
 
     for (const auto& validator : validators)
     {
-      if (validator.deregistered || validator.collateral_amount < min_collateral)
+      if (validator.collateral_amount < min_collateral)
         continue;
-      if (!validator.online)
+      if (!validator_is_reward_eligible_at_height(
+              validator,
+              epoch_start_height,
+              min_remaining_lock_blocks,
+              reward_activation_delay_blocks,
+              missed_duties_threshold))
         continue;
-      if (validator.lock_end_height < epoch || (validator.lock_end_height - epoch) < min_remaining_lock_blocks)
-        continue;
+
       eligible.push_back(validator);
     }
 
@@ -197,13 +239,16 @@ namespace cryptonote
       validator_basis_points = 10000;
 
     const uint64_t validator_from_base = (base_block_reward * validator_basis_points) / 10000;
+    const uint64_t miner_from_base = base_block_reward - validator_from_base;
+
     result.validator_reward = validator_from_base;
-    result.miner_reward = base_block_reward - validator_from_base + tx_fees;
+    result.miner_reward = miner_from_base;
 
     // Explicitly preserve total emission invariants (base + tail + fees).
     const uint64_t expected_total = base_block_reward + tail_emission + tx_fees;
     uint64_t actual_total = 0;
-    if (add_overflow(result.miner_reward, result.validator_reward, actual_total) ||
+    if (add_overflow(result.miner_reward, tx_fees, actual_total) ||
+        add_overflow(actual_total, result.validator_reward, actual_total) ||
         add_overflow(actual_total, tail_emission, actual_total))
     {
       // Saturate to preserve safety on overflow.
@@ -221,7 +266,7 @@ namespace cryptonote
 
   bool validator_is_reward_eligible(const bonded_validator_info& validator, uint32_t missed_duties_threshold)
   {
-    if (!validator.active || !validator.online || validator.deregistered)
+    if (!validator.active || validator.deregistered)
       return false;
 
     return !validator_is_penalized(validator.missed_duties + validator.penalty_points, missed_duties_threshold);

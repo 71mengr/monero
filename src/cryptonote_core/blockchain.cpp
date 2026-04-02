@@ -42,6 +42,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_basic/events.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include "cryptonote_basic/miner.h"
 #include "hardforks/hardforks.h"
@@ -100,6 +101,51 @@ bool serialize_masternode_blob(const cryptonote::bonded_validator_info& masterno
 bool deserialize_masternode_blob(const cryptonote::blobdata& blob, cryptonote::bonded_validator_info& masternode)
 {
   return epee::serialization::load_t_from_binary(masternode, blob);
+}
+
+void apply_masternode_registrations_from_block(
+    const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
+    std::unordered_map<std::string, cryptonote::bonded_validator_info>& masternode_db,
+    cryptonote::BlockchainDB& db,
+    const uint64_t height,
+    const uint64_t timestamp)
+{
+  for (const auto& tx_entry : txs)
+  {
+    const auto& tx = tx_entry.first;
+    std::string registration_payload;
+    if (!cryptonote::get_masternode_registration_from_tx_extra(tx.extra, registration_payload))
+      continue;
+
+    const crypto::hash tx_hash = get_transaction_hash(tx);
+    const std::string txid = epee::string_tools::pod_to_hex(tx_hash);
+
+    cryptonote::bonded_validator_info info{};
+    const auto existing = masternode_db.find(txid);
+    if (existing != masternode_db.end())
+      info = existing->second;
+
+    info.id = txid;
+    info.collateral_txid = txid;
+    info.operator_key = registration_payload;
+    info.registration_height = height;
+    info.active = true;
+    info.online = true;
+    info.updated_height = height;
+    info.updated_timestamp = timestamp;
+    if (info.created_height == 0)
+      info.created_height = height;
+    if (info.created_timestamp == 0)
+      info.created_timestamp = timestamp;
+
+    masternode_db[txid] = std::move(info);
+
+    cryptonote::blobdata blob;
+    if (serialize_masternode_blob(masternode_db[txid], blob))
+      db.set_masternode_blob(txid, blob);
+    else
+      MWARNING("Failed to serialize masternode state for txid " << txid);
+  }
 }
 }
 
@@ -4629,6 +4675,9 @@ leave:
       m_tx_pool.validate(new_hf_version);
     }
   }
+
+  if (new_hf_version >= HF_MN_REG)
+    apply_masternode_registrations_from_block(txs, m_masternode_db, *m_db, new_height - 1, bl.timestamp);
 
   const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
 

@@ -31,6 +31,8 @@
 #include "cryptonote_core/blockchain.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/tx_verification_utils.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_basic/tx_extra.h"
 #include "hardforks/hardforks.h"
 #include "ringct/rctSigs.h"
 
@@ -176,6 +178,38 @@ static bool ver_non_input_consensus_templated(TxForwardIt tx_begin, TxForwardIt 
         // Rule 6
         if (!Blockchain::check_tx_outputs(tx, tvc, hf_version) || tvc.m_verifivation_failed)
             return false;
+
+        // Rule 6.1: masternode registration becomes consensus-validated at HF_MN_REG
+        if (hf_version >= HF_MN_REG)
+        {
+            std::vector<tx_extra_field> tx_extra_fields;
+            if (!parse_tx_extra(tx.extra, tx_extra_fields))
+            {
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+
+            size_t registration_count = 0;
+            for (const auto& field : tx_extra_fields)
+            {
+                if (field.type() != typeid(tx_extra_masternode_registration))
+                    continue;
+
+                ++registration_count;
+                const auto& registration = boost::get<tx_extra_masternode_registration>(field).registration;
+                if (registration.empty())
+                {
+                    tvc.m_verifivation_failed = true;
+                    return false;
+                }
+            }
+
+            if (registration_count > 1)
+            {
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+        }
 
         // We only want to check RingCT semantics if this is actually a RingCT transaction
         if (tx.version >= 2)

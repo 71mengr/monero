@@ -193,6 +193,8 @@
 #define HF_VERSION_VIEW_TAGS                    15
 #define HF_VERSION_2021_SCALING                 15
 #define HF_VERSION_MASTERNODE_REWARD_SPLIT      16
+#define HF_MN_REG                               17
+#define HF_VERSION_MN_REG                       HF_MN_REG
 
 #define MASTERNODE_REWARD_BASIS_POINTS          2000
 

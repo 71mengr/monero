@@ -356,10 +356,12 @@ namespace cryptonote
     {
       block_complete_entry b;
       uint64_t current_blockchain_height;
+      std::vector<p2p_masternode_info> masternodes;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(b)
         KV_SERIALIZE(current_blockchain_height)
+        KV_SERIALIZE_OPT(masternodes, std::vector<p2p_masternode_info>())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

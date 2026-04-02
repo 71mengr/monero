@@ -576,12 +576,15 @@ namespace cryptonote
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg;
     fluffy_arg.b = std::move(arg.b);
     fluffy_arg.current_blockchain_height = arg.current_blockchain_height;
+    fluffy_arg.masternodes = std::move(arg.masternodes);
     return handle_notify_new_fluffy_block(command, fluffy_arg, context);
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
   {
+    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
+
     // If we are synchronizing the node or setting up this connection, then do nothing
     if(context.m_state != cryptonote_connection_context::state_normal)
       return 1;
@@ -775,6 +778,7 @@ namespace cryptonote
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
     fluffy_response.b.block = t_serializable_object_to_blob(b);
     fluffy_response.current_blockchain_height = arg.current_blockchain_height;
+    fluffy_response.masternodes = m_core.get_blockchain_storage().get_masternodes(true);
     std::vector<bool> seen(b.tx_hashes.size(), false);
     for(auto& tx_idx: arg.missing_tx_indices)
     {

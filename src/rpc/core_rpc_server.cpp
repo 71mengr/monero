@@ -955,10 +955,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_bonded_validators(const COMMAND_RPC_GET_BONDED_VALIDATORS::request& req, COMMAND_RPC_GET_BONDED_VALIDATORS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_bonded_validators);
-    if (ctx != NULL)
-      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
-    else
-      res.untrusted = false;
+    res.untrusted = false;
 
     const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
     res.enabled = bonded_tier_enabled;
@@ -1024,10 +1021,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_bonded_validator_status(const COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_STATUS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_bonded_validator_status);
-    if (ctx != NULL)
-      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
-    else
-      res.untrusted = false;
+    res.untrusted = false;
 
     const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
     res.enabled = bonded_tier_enabled;
@@ -1062,10 +1056,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_bonded_validator_rewards(const COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::request& req, COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_bonded_validator_rewards);
-    if (ctx != NULL)
-      res.untrusted = ctx->m_rpc_version < MAKE_CORE_RPC_VERSION(1, 4);
-    else
-      res.untrusted = false;
+    res.untrusted = false;
 
     const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
     res.enabled = bonded_tier_enabled;

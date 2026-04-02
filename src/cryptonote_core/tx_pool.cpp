@@ -63,6 +63,8 @@ namespace cryptonote
 {
   namespace
   {
+    constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
+
     /*! The Dandelion++ has formula for calculating the average embargo timeout:
                           (-k*(k-1)*hop)/(2*log(1-ep))
         where k is the number of hops before this node and ep is the probability
@@ -144,6 +146,7 @@ namespace cryptonote
         const crypto::hash& txid,
         const uint8_t hf_version)
     {
+      (void)hf_version;
       masternode_registration_payload registration{};
       bool has_registration = false;
       if (!get_masternode_registration_from_tx(tx, registration, has_registration))
@@ -158,10 +161,13 @@ namespace cryptonote
       if (registration.collateral_outpoint.vout >= collateral_tx.vout.size())
         return false;
 
-      if (registration.collateral_amount != 0 && collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
+      if (registration.collateral_amount != MASTERNODE_COLLATERAL_EXACT_AMOUNT)
         return false;
 
-      if (!blockchain.is_tx_spendtime_unlocked(collateral_tx.unlock_time, hf_version))
+      if (collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
+        return false;
+
+      if (collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && collateral_tx.unlock_time <= blockchain.get_current_blockchain_height())
         return false;
 
       for (const auto& validator : blockchain.get_masternodes(false))

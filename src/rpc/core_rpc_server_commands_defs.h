@@ -40,6 +40,7 @@
 #include "common/varint.h"
 #include "common/perf_timer.h"
 #include "serialization/string.h"
+#include "cryptonote_core/bonded_validator_rules.h"
 
 namespace
 {
@@ -2795,64 +2796,6 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
-  struct bonded_validator_info
-  {
-    std::string id;
-    std::string operator_key;
-    std::string collateral_txid;
-    uint64_t collateral_amount;
-    uint64_t registration_height;
-    uint64_t lock_end_height;
-    uint64_t last_uptime_proof_height;
-    uint32_t missed_duties;
-    bool active;
-    bool online;
-    uint32_t penalty_points;
-    bool deregistered;
-    uint64_t created_height;
-    uint64_t updated_height;
-    uint64_t created_timestamp;
-    uint64_t updated_timestamp;
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(id)
-      FIELD(operator_key)
-      FIELD(collateral_txid)
-      FIELD(collateral_amount)
-      FIELD(registration_height)
-      FIELD(lock_end_height)
-      FIELD(last_uptime_proof_height)
-      FIELD(missed_duties)
-      FIELD(active)
-      FIELD(online)
-      FIELD(penalty_points)
-      FIELD(deregistered)
-      FIELD(created_height)
-      FIELD(updated_height)
-      FIELD(created_timestamp)
-      FIELD(updated_timestamp)
-    END_SERIALIZE()
-
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(id)
-      KV_SERIALIZE(operator_key)
-      KV_SERIALIZE(collateral_txid)
-      KV_SERIALIZE(collateral_amount)
-      KV_SERIALIZE(registration_height)
-      KV_SERIALIZE(lock_end_height)
-      KV_SERIALIZE(last_uptime_proof_height)
-      KV_SERIALIZE(missed_duties)
-      KV_SERIALIZE(active)
-      KV_SERIALIZE(online)
-      KV_SERIALIZE(penalty_points)
-      KV_SERIALIZE(deregistered)
-      KV_SERIALIZE_OPT(created_height, (uint64_t)0)
-      KV_SERIALIZE_OPT(updated_height, (uint64_t)0)
-      KV_SERIALIZE_OPT(created_timestamp, (uint64_t)0)
-      KV_SERIALIZE_OPT(updated_timestamp, (uint64_t)0)
-    END_KV_SERIALIZE_MAP()
   };
 
   struct COMMAND_RPC_GET_BONDED_VALIDATORS

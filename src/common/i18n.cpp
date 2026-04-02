@@ -33,7 +33,19 @@
 #include <map>
 #include "file_io_utils.h"
 #include "common/i18n.h"
-#include "translation_files.h"
+
+#if defined(__has_include)
+#  if __has_include("translation_files.h")
+#    include "translation_files.h"
+#  else
+static bool find_embedded_file(const std::string &, std::string &)
+{
+  return false;
+}
+#  endif
+#else
+#  include "translation_files.h"
+#endif
 
 #include <boost/system/error_code.hpp>
 #include <boost/filesystem.hpp>
@@ -330,5 +342,4 @@ const char *i18n_translate(const char *s, const std::string &context)
     return s;
   return (*i).second.c_str();
 }
-
 

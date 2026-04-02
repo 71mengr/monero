@@ -973,10 +973,17 @@ namespace cryptonote
       entry.collateral_txid = masternode.collateral_txid;
       entry.collateral_amount = masternode.collateral_amount;
       entry.registration_height = masternode.registration_height;
+      entry.lock_end_height = masternode.lock_end_height;
       entry.last_uptime_proof_height = masternode.last_uptime_proof_height;
+      entry.missed_duties = masternode.missed_duties;
       entry.active = masternode.active;
       entry.online = masternode.online;
       entry.penalty_points = masternode.penalty_points;
+      entry.deregistered = masternode.deregistered;
+      entry.created_height = masternode.created_height;
+      entry.updated_height = masternode.updated_height;
+      entry.created_timestamp = masternode.created_timestamp;
+      entry.updated_timestamp = masternode.updated_timestamp;
       res.validators.push_back(std::move(entry));
     }
     res.status = CORE_RPC_STATUS_OK;
@@ -1005,10 +1012,17 @@ namespace cryptonote
       res.validator.collateral_txid = masternode.collateral_txid;
       res.validator.collateral_amount = masternode.collateral_amount;
       res.validator.registration_height = masternode.registration_height;
+      res.validator.lock_end_height = masternode.lock_end_height;
       res.validator.last_uptime_proof_height = masternode.last_uptime_proof_height;
+      res.validator.missed_duties = masternode.missed_duties;
       res.validator.active = masternode.active;
       res.validator.online = masternode.online;
       res.validator.penalty_points = masternode.penalty_points;
+      res.validator.deregistered = masternode.deregistered;
+      res.validator.created_height = masternode.created_height;
+      res.validator.updated_height = masternode.updated_height;
+      res.validator.created_timestamp = masternode.created_timestamp;
+      res.validator.updated_timestamp = masternode.updated_timestamp;
     }
     res.status = CORE_RPC_STATUS_OK;
     return true;

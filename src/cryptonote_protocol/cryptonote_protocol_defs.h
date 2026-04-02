@@ -172,10 +172,17 @@ namespace cryptonote
     std::string collateral_txid;
     uint64_t collateral_amount = 0;
     uint64_t registration_height = 0;
+    uint64_t lock_end_height = 0;
     uint64_t last_uptime_proof_height = 0;
+    uint32_t missed_duties = 0;
     bool active = false;
     bool online = false;
     uint32_t penalty_points = 0;
+    bool deregistered = false;
+    uint64_t created_height = 0;
+    uint64_t updated_height = 0;
+    uint64_t created_timestamp = 0;
+    uint64_t updated_timestamp = 0;
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(id)
@@ -183,10 +190,17 @@ namespace cryptonote
       KV_SERIALIZE(collateral_txid)
       KV_SERIALIZE(collateral_amount)
       KV_SERIALIZE(registration_height)
+      KV_SERIALIZE(lock_end_height)
       KV_SERIALIZE(last_uptime_proof_height)
+      KV_SERIALIZE(missed_duties)
       KV_SERIALIZE(active)
       KV_SERIALIZE(online)
       KV_SERIALIZE(penalty_points)
+      KV_SERIALIZE(deregistered)
+      KV_SERIALIZE_OPT(created_height, (uint64_t)0)
+      KV_SERIALIZE_OPT(updated_height, (uint64_t)0)
+      KV_SERIALIZE_OPT(created_timestamp, (uint64_t)0)
+      KV_SERIALIZE_OPT(updated_timestamp, (uint64_t)0)
     END_KV_SERIALIZE_MAP()
   };
 

@@ -96,7 +96,13 @@ DISABLE_VS_WARNINGS(4267)
 namespace
 {
 constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
+constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = (30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;
 constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "monero-masternode-registration-v2";
+
+std::string make_masternode_collateral_outpoint_key(const cryptonote::masternode_collateral_outpoint& collateral_outpoint)
+{
+  return epee::string_tools::pod_to_hex(collateral_outpoint.txid) + ":" + std::to_string(collateral_outpoint.vout);
+}
 
 bool make_masternode_registration_signature_hash(
     const cryptonote::masternode_registration_payload& registration,
@@ -135,7 +141,7 @@ bool validate_masternode_registration_rules_for_block(
     seen_operator_keys.insert(kv.first);
   std::unordered_set<std::string> seen_collateral_outpoints;
   for (const auto& kv : by_collateral_outpoint)
-    seen_collateral_outpoints.insert(kv.first + ":*");
+    seen_collateral_outpoints.insert(kv.first);
 
   for (const auto& tx_entry : txs)
   {
@@ -161,8 +167,7 @@ bool validate_masternode_registration_rules_for_block(
 
     const crypto::hash tx_hash = get_transaction_hash(tx);
     const std::string operator_key = epee::string_tools::pod_to_hex(registration.operator_pubkey);
-    const std::string collateral_txid = epee::string_tools::pod_to_hex(registration.collateral_outpoint.txid);
-    const std::string collateral_outpoint = collateral_txid + ":" + std::to_string(registration.collateral_outpoint.vout);
+    const std::string collateral_outpoint = make_masternode_collateral_outpoint_key(registration.collateral_outpoint);
 
     // (a) canonical/structural checks
     if (registration.version != cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION)
@@ -175,7 +180,7 @@ bool validate_masternode_registration_rules_for_block(
     collateral_registration_tx_payload checklist_payload{};
     checklist_payload.collateral_amount = registration.collateral_amount;
     checklist_payload.lock_start_height = block_height;
-    checklist_payload.min_lock_blocks = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+    checklist_payload.min_lock_blocks = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
     checklist_payload.operator_key = operator_key;
     checklist_payload.service_endpoints.push_back(epee::string_tools::pod_to_hex(registration.service_endpoint_commitment));
     checklist_payload.metadata_commitment = registration.service_endpoint_commitment;
@@ -185,7 +190,7 @@ bool validate_masternode_registration_rules_for_block(
     // (b) uniqueness checks against resulting state and within block
     if (seen_operator_keys.count(operator_key) > 0)
       return false;
-    if (seen_collateral_outpoints.count(collateral_txid + ":*") > 0 || seen_collateral_outpoints.count(collateral_outpoint) > 0)
+    if (seen_collateral_outpoints.count(collateral_outpoint) > 0)
       return false;
 
     transaction collateral_tx{};
@@ -200,8 +205,13 @@ bool validate_masternode_registration_rules_for_block(
     if (collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
       return false;
 
-    // (c.ii) lock/unlock semantics: collateral must be locked at registration time
-    if (collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && collateral_tx.unlock_time <= block_height)
+    // (c.ii) lock/unlock semantics: collateral must be block-height locked at least one month from registration
+    if (collateral_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER)
+      return false;
+    if (block_height > std::numeric_limits<uint64_t>::max() - MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS)
+      return false;
+    const uint64_t min_lock_height = block_height + MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
+    if (collateral_tx.unlock_time < min_lock_height)
       return false;
 
     // (c.iii) maturity (if required)
@@ -886,7 +896,7 @@ void Blockchain::apply_masternode_registrations_from_block(
     }
 
     info.id = txid;
-    info.collateral_txid = epee::string_tools::pod_to_hex(registration_payload.collateral_outpoint.txid);
+    info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
     info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
     info.collateral_amount = registration_payload.collateral_amount;
     if (!transition_undo.had_previous_state)
@@ -953,7 +963,7 @@ void Blockchain::rebuild_masternode_state_from_chain()
       if (!info.collateral_txid.empty())
         m_masternode_by_collateral_outpoint.erase(info.collateral_txid);
       info.id = txid;
-      info.collateral_txid = epee::string_tools::pod_to_hex(registration_payload.collateral_outpoint.txid);
+      info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
       info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
       info.collateral_amount = registration_payload.collateral_amount;
       if (info.registration_height == 0)

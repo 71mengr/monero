@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
+#include <limits>
 #include <unordered_set>
 #include <vector>
 
@@ -65,6 +66,12 @@ namespace cryptonote
   namespace
   {
     constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
+    constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = (30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;
+
+    std::string make_masternode_collateral_outpoint_key(const masternode_collateral_outpoint& collateral_outpoint)
+    {
+      return epee::string_tools::pod_to_hex(collateral_outpoint.txid) + ":" + std::to_string(collateral_outpoint.vout);
+    }
 
     /*! The Dandelion++ has formula for calculating the average embargo timeout:
                           (-k*(k-1)*hop)/(2*log(1-ep))
@@ -168,7 +175,7 @@ namespace cryptonote
       collateral_registration_tx_payload checklist_payload{};
       checklist_payload.collateral_amount = registration.collateral_amount;
       checklist_payload.lock_start_height = blockchain.get_current_blockchain_height();
-      checklist_payload.min_lock_blocks = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+      checklist_payload.min_lock_blocks = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
       checklist_payload.operator_key = epee::string_tools::pod_to_hex(registration.operator_pubkey);
       checklist_payload.service_endpoints.push_back(epee::string_tools::pod_to_hex(registration.service_endpoint_commitment));
       checklist_payload.metadata_commitment = registration.service_endpoint_commitment;
@@ -178,14 +185,22 @@ namespace cryptonote
       if (collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
         return false;
 
-      if (collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && collateral_tx.unlock_time <= blockchain.get_current_blockchain_height())
+      if (collateral_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER)
         return false;
 
+      const uint64_t current_height = blockchain.get_current_blockchain_height();
+      if (current_height > std::numeric_limits<uint64_t>::max() - MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS)
+        return false;
+      const uint64_t min_lock_height = current_height + MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
+      if (collateral_tx.unlock_time < min_lock_height)
+        return false;
+
+      const std::string collateral_outpoint = make_masternode_collateral_outpoint_key(registration.collateral_outpoint);
       for (const auto& validator : blockchain.get_masternodes(false))
       {
         if (validator.operator_key == epee::string_tools::pod_to_hex(registration.operator_pubkey))
           return false;
-        if (validator.collateral_txid == epee::string_tools::pod_to_hex(registration.collateral_outpoint.txid))
+        if (validator.collateral_txid == collateral_outpoint)
           return false;
       }
 

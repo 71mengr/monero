@@ -533,6 +533,7 @@ namespace cryptonote
     bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp);
     void merge_synced_masternodes(const std::vector<bonded_validator_info>& masternodes);
     std::vector<bonded_validator_info> get_masternodes(bool include_inactive) const;
+    std::vector<p2p_masternode_info> get_p2p_masternodes(bool include_inactive) const;
     bool get_masternode(const std::string& id, bonded_validator_info& masternode) const;
 
     /**

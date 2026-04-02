@@ -780,7 +780,7 @@ namespace cryptonote
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
     fluffy_response.b.block = t_serializable_object_to_blob(b);
     fluffy_response.current_blockchain_height = arg.current_blockchain_height;
-    fluffy_response.masternodes = m_core.get_blockchain_storage().get_masternodes(true);
+    fluffy_response.masternodes = m_core.get_blockchain_storage().get_p2p_masternodes(true);
     std::vector<bool> seen(b.tx_hashes.size(), false);
     for(auto& tx_idx: arg.missing_tx_indices)
     {

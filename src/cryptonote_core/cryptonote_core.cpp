@@ -1308,7 +1308,7 @@ namespace cryptonote
       cryptonote_connection_context exclude_context = {};
       NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
       arg.current_blockchain_height = m_blockchain_storage.get_current_blockchain_height();
-      arg.masternodes = m_blockchain_storage.get_masternodes(true);
+      arg.masternodes = m_blockchain_storage.get_p2p_masternodes(true);
       std::vector<crypto::hash> missed_txs;
       for (const auto &tx_hash : b.tx_hashes)
       {

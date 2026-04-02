@@ -2683,6 +2683,21 @@ std::vector<bonded_validator_info> Blockchain::get_masternodes(bool include_inac
   return masternodes;
 }
 //------------------------------------------------------------------
+std::vector<p2p_masternode_info> Blockchain::get_p2p_masternodes(bool include_inactive) const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  std::vector<p2p_masternode_info> masternodes;
+  masternodes.reserve(m_masternode_db.size());
+
+  for (const auto& kv : m_masternode_db)
+  {
+    if (!include_inactive && (!kv.second.active || !kv.second.online))
+      continue;
+    masternodes.push_back(make_p2p_masternode_info(kv.second));
+  }
+  return masternodes;
+}
+//------------------------------------------------------------------
 bool Blockchain::get_masternode(const std::string& id, bonded_validator_info& masternode) const
 {
   CRITICAL_REGION_LOCAL(m_blockchain_lock);

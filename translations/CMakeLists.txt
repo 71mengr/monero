@@ -71,11 +71,11 @@ endif()
 
 string(REPLACE ".ts" ".qm" qm_files "${ts_files}")
 
-set(translation_generator_command "${CMAKE_CURRENT_BINARY_DIR}/generate_translations_header${CMAKE_EXECUTABLE_SUFFIX}")
+set(translation_generator_command "$<TARGET_FILE:generate_translations_header>")
 if(CMAKE_CROSSCOMPILING AND CMAKE_EXECUTABLE_SUFFIX STREQUAL ".exe")
   find_program(WINE_EXECUTABLE wine)
   if(WINE_EXECUTABLE STREQUAL "WINE_EXECUTABLE-NOTFOUND")
-    message(FATAL_ERROR "wine is required to run generate_translations_header when cross-compiling to Windows")
+    message(FATAL_ERROR "wine is required to run generate_translations_header.exe when cross-compiling to Windows")
   endif()
   set(translation_generator_command "${WINE_EXECUTABLE}" "${translation_generator_command}")
 endif()

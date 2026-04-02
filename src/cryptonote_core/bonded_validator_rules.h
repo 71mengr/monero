@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,9 @@ namespace cryptonote
   struct deregistration_proof
   {
     std::string validator_id;
+    uint64_t epoch = 0;
+    uint64_t duty_slot = 0;
+    uint8_t reason_code = 0;
     uint64_t evidence_height = 0;
     std::vector<std::string> signatures;
 
@@ -169,4 +173,14 @@ namespace cryptonote
       uint64_t unlock_delay,
       bool slashing_enabled,
       uint16_t slash_basis_points);
+
+  std::string make_deregistration_proof_key(const deregistration_proof& proof);
+
+  bool signatures_are_canonical_and_unique(const std::vector<std::string>& signatures);
+
+  bool proof_conflicts_with_observed_history(
+      const std::string& proof_key,
+      const crypto::hash& proof_digest,
+      const std::set<std::string>& observed_keys,
+      const std::vector<std::pair<std::string, crypto::hash>>& observed_equivocations);
 }

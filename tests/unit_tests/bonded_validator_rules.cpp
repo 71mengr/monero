@@ -275,7 +275,13 @@ TEST(bonded_validator_rules, penalty_and_unlock_rules)
 
 TEST(bonded_validator_rules, proof_formats)
 {
-  cryptonote::deregistration_proof dereg{"val-1", 123, {"sig1", "sig2"}};
+  cryptonote::deregistration_proof dereg{};
+  dereg.validator_id = "val-1";
+  dereg.epoch = 12;
+  dereg.duty_slot = 4;
+  dereg.reason_code = 1;
+  dereg.evidence_height = 123;
+  dereg.signatures = {"sig1", "sig2"};
   cryptonote::heartbeat_proof hb{"val-1", 10, 12345, "sig"};
   cryptonote::relay_challenge_proof relay{"val-1", crypto::cn_fast_hash("c", 1), crypto::cn_fast_hash("r", 1), "sig"};
 
@@ -286,6 +292,77 @@ TEST(bonded_validator_rules, proof_formats)
 
   dereg.signatures.clear();
   ASSERT_FALSE(dereg.is_well_formed(1, &reason));
+}
+
+TEST(bonded_validator_rules, deregistration_proof_canonical_signature_ordering)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "val-ordering";
+  proof.epoch = 20;
+  proof.duty_slot = 2;
+  proof.reason_code = 3;
+  proof.evidence_height = 500;
+
+  proof.signatures = {"sig-a", "sig-b", "sig-c"};
+  std::string reason;
+  ASSERT_TRUE(proof.is_well_formed(2, &reason)) << reason;
+
+  proof.signatures = {"sig-b", "sig-a"};
+  ASSERT_FALSE(proof.is_well_formed(2, &reason));
+
+  proof.signatures = {"sig-a", "sig-a"};
+  ASSERT_FALSE(proof.is_well_formed(2, &reason));
+}
+
+TEST(bonded_validator_rules, replay_and_equivocation_protection_for_validator_proofs)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "val-1";
+  proof.epoch = 44;
+  proof.duty_slot = 7;
+  proof.reason_code = 9;
+  proof.evidence_height = 999;
+  proof.signatures = {"sig-a", "sig-b"};
+
+  const std::string key = cryptonote::make_deregistration_proof_key(proof);
+  const crypto::hash digest_a = crypto::cn_fast_hash("proof-A", 7);
+  const crypto::hash digest_b = crypto::cn_fast_hash("proof-B", 7);
+
+  std::set<std::string> observed_keys{};
+  std::vector<std::pair<std::string, crypto::hash>> observed_equivocations{};
+
+  ASSERT_FALSE(cryptonote::proof_conflicts_with_observed_history(key, digest_a, observed_keys, observed_equivocations));
+
+  observed_keys.insert(key);
+  ASSERT_TRUE(cryptonote::proof_conflicts_with_observed_history(key, digest_a, observed_keys, observed_equivocations));
+
+  observed_keys.clear();
+  observed_equivocations.push_back({key, digest_a});
+  ASSERT_FALSE(cryptonote::proof_conflicts_with_observed_history(key, digest_a, observed_keys, observed_equivocations));
+  ASSERT_TRUE(cryptonote::proof_conflicts_with_observed_history(key, digest_b, observed_keys, observed_equivocations));
+}
+
+TEST(bonded_validator_rules, replay_guard_reorg_rollback_allows_reacceptance)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "val-reorg";
+  proof.epoch = 3;
+  proof.duty_slot = 1;
+  proof.reason_code = 2;
+  proof.evidence_height = 77;
+  proof.signatures = {"sig-a", "sig-b"};
+
+  const std::string key = cryptonote::make_deregistration_proof_key(proof);
+  const crypto::hash digest = crypto::cn_fast_hash("proof-reorg", 11);
+
+  std::set<std::string> observed_keys{key};
+  std::vector<std::pair<std::string, crypto::hash>> observed_equivocations{};
+
+  ASSERT_TRUE(cryptonote::proof_conflicts_with_observed_history(key, digest, observed_keys, observed_equivocations));
+
+  // Simulate a detach/reorg rollback that reverts the proof observation.
+  observed_keys.erase(key);
+  ASSERT_FALSE(cryptonote::proof_conflicts_with_observed_history(key, digest, observed_keys, observed_equivocations));
 }
 
 TEST(bonded_validator_rules, deregistration_penalty_criteria_validation_and_miss_ratio)

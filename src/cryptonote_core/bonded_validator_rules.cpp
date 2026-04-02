@@ -34,6 +34,7 @@ namespace
   {
     return !epee::string_tools::trim(value).empty();
   }
+
 }
 
 namespace cryptonote
@@ -124,9 +125,19 @@ namespace cryptonote
       if (reason) *reason = "validator id missing";
       return false;
     }
+    if (epoch == 0)
+    {
+      if (reason) *reason = "epoch must be > 0";
+      return false;
+    }
     if (evidence_height == 0)
     {
       if (reason) *reason = "evidence height must be > 0";
+      return false;
+    }
+    if (!signatures_are_canonical_and_unique(signatures))
+    {
+      if (reason) *reason = "signatures must be non-empty, unique, and lexicographically sorted";
       return false;
     }
     if (signatures.size() < min_signatures)
@@ -374,5 +385,53 @@ namespace cryptonote
       return std::numeric_limits<uint64_t>::max();
 
     return base_unlock;
+  }
+
+  std::string make_deregistration_proof_key(const deregistration_proof& proof)
+  {
+    std::string key;
+    key.reserve(proof.validator_id.size() + 48);
+    key.append(proof.validator_id);
+    key.push_back(':');
+    key.append(std::to_string(proof.epoch));
+    key.push_back(':');
+    key.append(std::to_string(proof.duty_slot));
+    key.push_back(':');
+    key.append(std::to_string(proof.reason_code));
+    return key;
+  }
+
+  bool signatures_are_canonical_and_unique(const std::vector<std::string>& signatures)
+  {
+    if (signatures.empty())
+      return false;
+
+    for (size_t i = 0; i < signatures.size(); ++i)
+    {
+      if (!non_empty_trimmed(signatures[i]))
+        return false;
+      if (i > 0 && signatures[i - 1] >= signatures[i])
+        return false;
+    }
+
+    return true;
+  }
+
+  bool proof_conflicts_with_observed_history(
+      const std::string& proof_key,
+      const crypto::hash& proof_digest,
+      const std::set<std::string>& observed_keys,
+      const std::vector<std::pair<std::string, crypto::hash>>& observed_equivocations)
+  {
+    if (observed_keys.count(proof_key) > 0)
+      return true; // Replay
+
+    for (const auto& known : observed_equivocations)
+    {
+      if (known.first == proof_key && std::memcmp(&known.second, &proof_digest, sizeof(crypto::hash)) != 0)
+        return true; // Equivocation
+    }
+
+    return false;
   }
 }

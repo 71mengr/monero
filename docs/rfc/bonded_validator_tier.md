@@ -11,6 +11,13 @@ Define a deterministic bonded validator subsystem where operators lock collatera
 serve signed service duties, and receive protocol rewards with explicit penalties
 for missed obligations.
 
+## Security checklist
+
+- [ ] Consensus encoding is canonical and deterministic.
+- [ ] Replay and equivocation protections on all validator proofs.
+- [ ] Wallet UX prevents accidental collateral lock misuse.
+- [ ] Full regression coverage for reorg behavior.
+
 ## Design summary
 
 This RFC decomposes the rollout into consensus and non-consensus components so

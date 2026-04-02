@@ -111,7 +111,7 @@ bool make_masternode_registration_signature_hash(
     crypto::hash& signature_hash)
 {
   cryptonote::masternode_registration_payload unsigned_payload = registration;
-  unsigned_payload.operator_signature = crypto::null_sig;
+  unsigned_payload.operator_signature = crypto::signature{};
 
   cryptonote::blobdata payload_blob;
   if (!t_serializable_object_to_blob(unsigned_payload, payload_blob))

@@ -741,7 +741,7 @@ namespace cryptonote
   bool get_masternode_registration_hash_preimage(const masternode_registration_payload& registration, crypto::hash& preimage_hash)
   {
     masternode_registration_payload preimage = registration;
-    preimage.operator_signature = crypto::null_sig;
+    preimage.operator_signature = crypto::signature{};
     blobdata preimage_blob;
     CHECK_AND_ASSERT_MES(t_serializable_object_to_blob(preimage, preimage_blob), false, "failed to serialize masternode registration preimage");
     crypto::cn_fast_hash(preimage_blob.data(), preimage_blob.size(), preimage_hash);

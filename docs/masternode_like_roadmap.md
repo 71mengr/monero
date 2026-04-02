@@ -80,6 +80,16 @@ Introduce an optional **bonded validator tier** ("masternode-like" nodes) that:
 - Wallet UX prevents accidental collateral lock misuse.
 - Full regression coverage for reorg behavior.
 
+## Safety checklist (must-have tests)
+
+- Encoding round-trip and malleability tests.
+- Block validation tests (accept/reject vectors).
+- Reorg tests (state rollback correctness).
+- Duplicate/regression tests for uniqueness constraints.
+- Reward accounting invariants.
+
+The roadmap already emphasizes parser/serializer tests and state-machine tests; those become mandatory before activation.
+
 ## Compatibility constraints
 
 - All changes must be hidden behind a network upgrade version.

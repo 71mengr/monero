@@ -333,6 +333,20 @@ While disabled by consensus gate, endpoints should return deterministic
 3. **Phase C:** Long soak, adversarial testing, and economics review.
 4. **Phase D:** Mainnet proposal with explicit activation criteria.
 
+## Mandatory pre-activation test gate
+
+Before any activation step in Phase B or later, the implementation MUST include
+and pass the following minimum test suite:
+
+- Encoding round-trip and malleability tests.
+- Block validation tests (accept/reject vectors).
+- Reorg tests (state rollback correctness).
+- Duplicate/regression tests for uniqueness constraints.
+- Reward accounting invariants.
+
+The roadmap already emphasizes parser/serializer tests and state-machine tests;
+those are mandatory and MUST pass before activation.
+
 ## Open questions
 
 - Final collateral bounds and denomination granularity.

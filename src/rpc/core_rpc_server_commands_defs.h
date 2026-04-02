@@ -2815,6 +2815,25 @@ namespace cryptonote
     uint64_t created_timestamp;
     uint64_t updated_timestamp;
 
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(id)
+      FIELD(operator_key)
+      FIELD(collateral_txid)
+      FIELD(collateral_amount)
+      FIELD(registration_height)
+      FIELD(lock_end_height)
+      FIELD(last_uptime_proof_height)
+      FIELD(missed_duties)
+      FIELD(active)
+      FIELD(online)
+      FIELD(penalty_points)
+      FIELD(deregistered)
+      FIELD(created_height)
+      FIELD(updated_height)
+      FIELD(created_timestamp)
+      FIELD(updated_timestamp)
+    END_SERIALIZE()
+
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(id)
       KV_SERIALIZE(operator_key)

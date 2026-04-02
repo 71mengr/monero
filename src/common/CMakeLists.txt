@@ -62,11 +62,13 @@ monero_find_all_headers(common_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
 monero_private_headers(common
   ${common_private_headers})
-monero_add_library(common
+monero_add_library_with_deps(
+  NAME common
+  DEPENDS generate_translations_header
+  SOURCES
   ${common_sources}
   ${common_headers}
-  ${common_private_headers}
-  DEPENDS generate_translations_header)
+  ${common_private_headers})
 target_link_libraries(common
   PUBLIC
     cncrypto

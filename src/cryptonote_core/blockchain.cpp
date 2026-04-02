@@ -507,27 +507,9 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
 
   db_rtxn_guard rtxn_guard(m_db);
 
-  m_masternode_db.clear();
-  m_masternode_by_operator_key.clear();
-  m_masternode_by_collateral_outpoint.clear();
-  m_masternode_undo_journal.clear();
-  m_db->for_all_masternode_blobs([this](const std::string& id, const cryptonote::blobdata& blob)
-  {
-    bonded_validator_info info{};
-    if (!deserialize_masternode_blob(blob, info))
-    {
-      MWARNING("Failed to deserialize masternode blob for id " << id << ", skipping record");
-      return true;
-    }
-    if (info.id.empty())
-      info.id = id;
-    if (info.active && !info.deregistered && !info.operator_key.empty())
-      m_masternode_by_operator_key[info.operator_key] = info.id;
-    if (info.active && !info.deregistered && !info.collateral_txid.empty())
-      m_masternode_by_collateral_outpoint[info.collateral_txid] = info.id;
-    m_masternode_db[info.id] = std::move(info);
-    return true;
-  });
+  // Bootstrap rule: local validator state is reconstructed from accepted chain history
+  // at startup, not from peer sync summaries or persisted advisory blobs.
+  rebuild_masternode_state_from_chain();
 
   // check how far behind we are
   uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
@@ -919,6 +901,67 @@ void Blockchain::apply_masternode_registrations_from_block(
 
   if (!block_undo.transitions.empty())
     m_masternode_undo_journal.push_back(std::move(block_undo));
+}
+//------------------------------------------------------------------
+void Blockchain::rebuild_masternode_state_from_chain()
+{
+  m_masternode_db.clear();
+  m_masternode_by_operator_key.clear();
+  m_masternode_by_collateral_outpoint.clear();
+  m_masternode_undo_journal.clear();
+
+  const uint64_t chain_height = m_db->height();
+  if (chain_height == 0)
+    return;
+
+  for (uint64_t height = 0; height < chain_height; ++height)
+  {
+    const block blk = m_db->get_block_from_height(height);
+    if (blk.tx_hashes.empty())
+      continue;
+
+    const std::vector<transaction> txs = m_db->get_tx_list(blk.tx_hashes);
+    if (txs.size() != blk.tx_hashes.size())
+    {
+      MWARNING("Unexpected tx list size while rebuilding masternode state at height " << height
+               << " (expected " << blk.tx_hashes.size() << ", got " << txs.size() << ")");
+    }
+
+    for (const auto& tx : txs)
+    {
+      cryptonote::masternode_registration_payload registration_payload{};
+      if (!get_registration_payload_from_tx(tx, registration_payload))
+        continue;
+
+      const std::string txid = epee::string_tools::pod_to_hex(get_transaction_hash(tx));
+      bonded_validator_info& info = m_masternode_db[txid];
+      if (!info.operator_key.empty())
+        m_masternode_by_operator_key.erase(info.operator_key);
+      if (!info.collateral_txid.empty())
+        m_masternode_by_collateral_outpoint.erase(info.collateral_txid);
+      info.id = txid;
+      info.collateral_txid = epee::string_tools::pod_to_hex(registration_payload.collateral_outpoint.txid);
+      info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
+      info.collateral_amount = registration_payload.collateral_amount;
+      if (info.registration_height == 0)
+        info.registration_height = height;
+      info.active = true;
+      info.online = true;
+      info.updated_height = height;
+      info.updated_timestamp = blk.timestamp;
+      if (info.created_height == 0)
+        info.created_height = height;
+      if (info.created_timestamp == 0)
+        info.created_timestamp = blk.timestamp;
+
+      if (!info.deregistered && !info.operator_key.empty())
+        m_masternode_by_operator_key[info.operator_key] = info.id;
+      if (!info.deregistered && !info.collateral_txid.empty())
+        m_masternode_by_collateral_outpoint[info.collateral_txid] = info.id;
+    }
+  }
+
+  MINFO("Bootstrapped masternode state from chain history: " << m_masternode_db.size() << " entries");
 }
 //------------------------------------------------------------------
 void Blockchain::revert_masternode_transitions_for_block(const uint64_t height)

@@ -570,7 +570,8 @@ namespace cryptonote
 
     MLOGIF_P2P_MESSAGE(crypto::hash hash; cryptonote::block b; bool ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);, ret, context << "Received NOTIFY_NEW_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
 
-    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
+    if (!arg.masternodes.empty())
+      LOG_DEBUG_CC(context, "Ignoring advisory masternode summary from NOTIFY_NEW_BLOCK; canonical validator state is derived from chain history");
 
     // Redirect this request form to fluffy block handling
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg;
@@ -583,7 +584,8 @@ namespace cryptonote
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
   {
-    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
+    if (!arg.masternodes.empty())
+      LOG_DEBUG_CC(context, "Ignoring advisory masternode summary from NOTIFY_NEW_FLUFFY_BLOCK; canonical validator state is derived from chain history");
 
     // If we are synchronizing the node or setting up this connection, then do nothing
     if(context.m_state != cryptonote_connection_context::state_normal)
@@ -1044,7 +1046,8 @@ namespace cryptonote
       return 1;
     }
     context.m_expect_response = 0;
-    m_core.get_blockchain_storage().merge_synced_masternodes(arg.masternodes);
+    if (!arg.masternodes.empty())
+      LOG_DEBUG_CC(context, "Ignoring advisory masternode summary from NOTIFY_RESPONSE_GET_OBJECTS; canonical validator state is derived from chain history");
 
     // calculate size of request
     size_t size = 0;

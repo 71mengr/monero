@@ -1165,6 +1165,7 @@ namespace cryptonote
         const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
         uint64_t height,
         uint64_t timestamp);
+    void rebuild_masternode_state_from_chain();
     void revert_masternode_transitions_for_block(uint64_t height);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage

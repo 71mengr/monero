@@ -228,11 +228,6 @@ bool serialize_masternode_blob(const cryptonote::bonded_validator_info& masterno
   return cryptonote::t_serializable_object_to_blob(masternode, blob);
 }
 
-bool deserialize_masternode_blob(const cryptonote::blobdata& blob, cryptonote::bonded_validator_info& masternode)
-{
-  return cryptonote::t_serializable_object_from_blob(masternode, blob);
-}
-
 cryptonote::p2p_masternode_info make_p2p_masternode_info(const cryptonote::bonded_validator_info& masternode)
 {
   cryptonote::p2p_masternode_info result{};

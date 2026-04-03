@@ -43,6 +43,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <limits>
 #include <ctype.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
@@ -202,8 +203,7 @@ namespace
   const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
-  const char* USAGE_MASTERNODE_REGISTRATION_DATA("masternode_registration_data <operator_pubkey> <collateral_txid> <collateral_vout> <collateral_amount> <service_endpoint_commitment> [<valid_from_height>] <operator_signature>");
-  const char* USAGE_MASTERNODE_REGISTER("masternode_register <registration_data> <address> <amount>");
+  const char* USAGE_MASTERNODE_REGISTER("masternode_register <collateral_amount> <address> <amount>");
   const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [subtractfeefrom=<D0>[,<D1>,all,...]] [<payment_id>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ACCOUNT("sweep_account <account> [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -1035,75 +1035,6 @@ bool simple_wallet::payment_id(const std::vector<std::string> &args/* = std::vec
   LONG_PAYMENT_ID_SUPPORT_CHECK();
 }
 
-bool simple_wallet::masternode_registration_data(const std::vector<std::string> &args)
-{
-  if (args.size() != 6 && args.size() != 7)
-  {
-    fail_msg_writer() << tr("usage: ") << tr(USAGE_MASTERNODE_REGISTRATION_DATA);
-    return true;
-  }
-
-  cryptonote::masternode_registration_payload payload{};
-  if (!epee::string_tools::hex_to_pod(args[0], payload.operator_pubkey))
-  {
-    fail_msg_writer() << tr("invalid operator public key");
-    return true;
-  }
-  if (!epee::string_tools::hex_to_pod(args[1], payload.collateral_outpoint.txid))
-  {
-    fail_msg_writer() << tr("invalid collateral txid");
-    return true;
-  }
-  if (!epee::string_tools::get_xtype_from_string(payload.collateral_outpoint.vout, args[2]))
-  {
-    fail_msg_writer() << tr("invalid collateral output index");
-    return true;
-  }
-  if (!cryptonote::parse_amount(payload.collateral_amount, args[3]) || payload.collateral_amount == 0)
-  {
-    fail_msg_writer() << tr("invalid collateral amount");
-    return true;
-  }
-  if (!epee::string_tools::hex_to_pod(args[4], payload.service_endpoint_commitment))
-  {
-    fail_msg_writer() << tr("invalid service endpoint commitment");
-    return true;
-  }
-
-  const size_t signature_arg_index = args.size() - 1;
-  if (args.size() == 7)
-  {
-    payload.has_valid_from_height = true;
-    if (!epee::string_tools::get_xtype_from_string(payload.valid_from_height, args[5]))
-    {
-      fail_msg_writer() << tr("invalid valid_from_height");
-      return true;
-    }
-  }
-
-  if (!epee::string_tools::hex_to_pod(args[signature_arg_index], payload.operator_signature))
-  {
-    fail_msg_writer() << tr("invalid operator signature");
-    return true;
-  }
-
-  if (!cryptonote::check_masternode_registration_payload(payload))
-  {
-    fail_msg_writer() << tr("invalid masternode registration payload");
-    return true;
-  }
-
-  cryptonote::blobdata payload_blob;
-  if (!cryptonote::t_serializable_object_to_blob(payload, payload_blob))
-  {
-    fail_msg_writer() << tr("failed to serialize masternode registration payload");
-    return true;
-  }
-
-  success_msg_writer() << tr("Registration data: ") << epee::string_tools::buff_to_hex_nodelimer(payload_blob);
-  return true;
-}
-
 bool simple_wallet::masternode_register(const std::vector<std::string> &args)
 {
   CHECK_IF_BACKGROUND_SYNCING("cannot register masternode");
@@ -1116,8 +1047,84 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
     return true;
   }
 
+  if (m_wallet->watch_only())
+  {
+    fail_msg_writer() << tr("Masternode registration is not available for watch-only wallets");
+    return true;
+  }
+
+  if (m_wallet->multisig())
+  {
+    fail_msg_writer() << tr("Masternode registration is not available for multisig wallets");
+    return true;
+  }
+
+  uint64_t collateral_amount = 0;
+  if (!cryptonote::parse_amount(collateral_amount, args[0]) || collateral_amount == 0)
+  {
+    fail_msg_writer() << tr("invalid collateral amount");
+    return true;
+  }
+
+  tools::wallet2::transfer_container transfers;
+  m_wallet->get_transfers(transfers);
+
+  const tools::wallet2::transfer_details *collateral_output = nullptr;
+  for (const auto& td : transfers)
+  {
+    if (td.m_spent)
+      continue;
+    if (td.m_subaddr_index.major != m_current_subaddress_account)
+      continue;
+    if (td.amount() != collateral_amount)
+      continue;
+    if (m_wallet->frozen(td))
+      continue;
+    if (!m_wallet->is_transfer_unlocked(td))
+      continue;
+    collateral_output = &td;
+    break;
+  }
+
+  if (collateral_output == nullptr)
+  {
+    fail_msg_writer() << tr("No unlocked unspent collateral output matching the requested amount was found in the current account");
+    return true;
+  }
+
+  cryptonote::masternode_registration_payload payload{};
+  payload.operator_pubkey = m_wallet->get_account().get_keys().m_account_address.m_spend_public_key;
+  payload.collateral_outpoint.txid = collateral_output->m_txid;
+  if (collateral_output->m_internal_output_index > std::numeric_limits<uint32_t>::max())
+  {
+    fail_msg_writer() << tr("collateral output index is out of range");
+    return true;
+  }
+  payload.collateral_outpoint.vout = collateral_output->m_internal_output_index;
+  payload.collateral_amount = collateral_amount;
+  payload.service_endpoint_commitment = collateral_output->m_txid;
+
+  crypto::hash preimage_hash = crypto::null_hash;
+  if (!cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash))
+  {
+    fail_msg_writer() << tr("Failed to build masternode registration preimage");
+    return true;
+  }
+
+  crypto::generate_signature(
+    preimage_hash,
+    payload.operator_pubkey,
+    m_wallet->get_account().get_keys().m_spend_secret_key,
+    payload.operator_signature);
+
+  if (!cryptonote::check_masternode_registration_payload(payload))
+  {
+    fail_msg_writer() << tr("invalid masternode registration payload");
+    return true;
+  }
+
   std::vector<uint8_t> extra;
-  if (!cryptonote::add_masternode_registration_to_tx_extra(extra, args[0]))
+  if (!cryptonote::add_masternode_registration_to_tx_extra(extra, payload))
   {
     fail_msg_writer() << tr("Failed to create masternode registration payload");
     return true;
@@ -3855,14 +3862,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::payment_id, _1),
                            tr(USAGE_PAYMENT_ID),
                            tr("Generate a new random full size payment id (obsolete). These will be unencrypted on the blockchain, see integrated_address for encrypted short payment ids."));
-  m_cmd_binder.set_handler("masternode_registration_data",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::masternode_registration_data, _1),
-                           tr(USAGE_MASTERNODE_REGISTRATION_DATA),
-                           tr("Build canonical registration_data payload hex for masternode_register."));
   m_cmd_binder.set_handler("masternode_register",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::masternode_register, _1),
                            tr(USAGE_MASTERNODE_REGISTER),
-                           tr("Create and broadcast a masternode registration transaction."));
+                           tr("Automatically build and broadcast a masternode registration transaction."));
   m_cmd_binder.set_handler("fee",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_fee_info, _1),
                            tr("Print the information about the current fee and transaction backlog."));

@@ -184,6 +184,26 @@ namespace cryptonote
     uint64_t created_timestamp = 0;
     uint64_t updated_timestamp = 0;
 
+    bool operator==(const p2p_masternode_info& other) const
+    {
+      return id == other.id
+          && operator_key == other.operator_key
+          && collateral_txid == other.collateral_txid
+          && collateral_amount == other.collateral_amount
+          && registration_height == other.registration_height
+          && lock_end_height == other.lock_end_height
+          && last_uptime_proof_height == other.last_uptime_proof_height
+          && missed_duties == other.missed_duties
+          && active == other.active
+          && online == other.online
+          && penalty_points == other.penalty_points
+          && deregistered == other.deregistered
+          && created_height == other.created_height
+          && updated_height == other.updated_height
+          && created_timestamp == other.created_timestamp
+          && updated_timestamp == other.updated_timestamp;
+    }
+
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(id)
       KV_SERIALIZE(operator_key)

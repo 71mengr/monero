@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <cctype>
+
 
 #define TX_EXTRA_PADDING_MAX_COUNT          255
 #define TX_EXTRA_NONCE_MAX_COUNT            255
@@ -40,6 +42,7 @@
 #define TX_EXTRA_MERGE_MINING_TAG           0x03
 #define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS     0x04
 #define TX_EXTRA_TAG_MASTERNODE_REGISTRATION 0x05
+#define TX_EXTRA_TAG_MVM_CONTRACT           0x06
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG   0xDE
 
 #define TX_EXTRA_NONCE_PAYMENT_ID           0x00
@@ -48,7 +51,17 @@
 namespace cryptonote
 {
   constexpr uint8_t TX_EXTRA_MASTERNODE_REGISTRATION_VERSION = 1;
+  constexpr uint8_t TX_EXTRA_MVM_CONTRACT_VERSION = 1;
   constexpr size_t TX_EXTRA_MASTERNODE_SERVICE_ENDPOINT_COMMITMENT_MAX_SIZE = 64;
+  constexpr size_t TX_EXTRA_MVM_ACTION_MAX_SIZE = 32;
+  constexpr size_t TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE = 64;
+  constexpr size_t TX_EXTRA_MVM_CODE_HASH_MAX_SIZE = 64;
+  constexpr size_t TX_EXTRA_MVM_TOKEN_SYMBOL_MAX_SIZE = 16;
+  constexpr size_t TX_EXTRA_MVM_TOKEN_NAME_MAX_SIZE = 64;
+  constexpr size_t TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE = 128;
+  constexpr size_t TX_EXTRA_MVM_BYTECODE_MAX_SIZE = 4096;
+  constexpr uint64_t TX_EXTRA_MVM_TOKEN_SUPPLY_MAX = 1000000000000000000ull;
+  constexpr uint64_t TX_EXTRA_MVM_TOKEN_AMOUNT_MAX = 1000000000000000000ull;
 
   struct masternode_collateral_outpoint
   {
@@ -222,11 +235,84 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  struct tx_extra_mvm_contract
+  {
+    uint8_t version = TX_EXTRA_MVM_CONTRACT_VERSION;
+    std::string action;
+    std::string contract_id;
+    std::string code_hash;
+    std::string token_symbol;
+    std::string token_name;
+    uint64_t token_supply = 0;
+    uint8_t token_decimals = 0;
+    std::string token_from;
+    std::string token_to;
+    uint64_t token_amount = 0;
+    std::string bytecode_hex;
+
+    BEGIN_SERIALIZE()
+      FIELD(version)
+      FIELD(action)
+      FIELD(contract_id)
+      FIELD(code_hash)
+      FIELD(token_symbol)
+      FIELD(token_name)
+      FIELD(token_supply)
+      FIELD(token_decimals)
+      FIELD(token_from)
+      FIELD(token_to)
+      FIELD(token_amount)
+      FIELD(bytecode_hex)
+      if (action.empty() || action.size() > TX_EXTRA_MVM_ACTION_MAX_SIZE) return false;
+      if (contract_id.empty() || contract_id.size() > TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE) return false;
+      if (code_hash.empty() || code_hash.size() > TX_EXTRA_MVM_CODE_HASH_MAX_SIZE) return false;
+      if (token_symbol.size() > TX_EXTRA_MVM_TOKEN_SYMBOL_MAX_SIZE) return false;
+      if (token_name.size() > TX_EXTRA_MVM_TOKEN_NAME_MAX_SIZE) return false;
+      if (token_decimals > 30) return false;
+      if (token_supply > TX_EXTRA_MVM_TOKEN_SUPPLY_MAX) return false;
+      if (token_amount > TX_EXTRA_MVM_TOKEN_AMOUNT_MAX) return false;
+      if (token_from.size() > TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE) return false;
+      if (token_to.size() > TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE) return false;
+      if (bytecode_hex.size() > TX_EXTRA_MVM_BYTECODE_MAX_SIZE) return false;
+      if (!bytecode_hex.empty())
+      {
+        if (bytecode_hex.size() % 2 != 0) return false;
+        for (const char c : bytecode_hex)
+        {
+          if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+        }
+      }
+      const bool known_action =
+          action == "create_contract" ||
+          action == "create_token" ||
+          action == "mint_token" ||
+          action == "transfer_token";
+      if (!known_action) return false;
+      if (action == "create_token")
+      {
+        if (token_symbol.empty() || token_supply == 0 || bytecode_hex.empty()) return false;
+      }
+      if (action == "transfer_token")
+      {
+        if (token_symbol.empty() || token_from.empty() || token_to.empty() || token_amount == 0) return false;
+        if (token_from == token_to) return false;
+      }
+      if (action == "mint_token")
+      {
+        if (token_symbol.empty() || token_to.empty() || token_amount == 0) return false;
+      }
+      if (action == "create_contract")
+      {
+        if (bytecode_hex.empty()) return false;
+      }
+    END_SERIALIZE()
+  };
+
   // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
   //   varint size;
   //   varint data[];
-  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_masternode_registration, tx_extra_mysterious_minergate> tx_extra_field;
+  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_masternode_registration, tx_extra_mvm_contract, tx_extra_mysterious_minergate> tx_extra_field;
 }
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding, TX_EXTRA_TAG_PADDING);
@@ -235,4 +321,5 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERGE_MINING_TAG);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_masternode_registration, TX_EXTRA_TAG_MASTERNODE_REGISTRATION);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_mvm_contract, TX_EXTRA_TAG_MVM_CONTRACT);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);

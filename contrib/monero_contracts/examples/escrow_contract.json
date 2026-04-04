@@ -1,0 +1,48 @@
+{
+  "name": "XMR Service Escrow",
+  "contract_type": "escrow",
+  "network": "mainnet",
+  "parties": [
+    {
+      "alias": "buyer",
+      "address": "48A1buyerExampleAddress",
+      "role": "payer"
+    },
+    {
+      "alias": "seller",
+      "address": "48A1sellerExampleAddress",
+      "role": "receiver"
+    },
+    {
+      "alias": "arbiter",
+      "address": "48A1arbiterExampleAddress",
+      "role": "mediator"
+    }
+  ],
+  "rules": {
+    "required_signers": 2,
+    "unlock_height": 3500000,
+    "oracle_condition": {
+      "source": "manual-arbiter",
+      "field": "delivery_status",
+      "expected": "delivered"
+    }
+  },
+  "actions": [
+    {
+      "type": "freeze_until_height",
+      "height": 3500000
+    },
+    {
+      "type": "release_multisig",
+      "to_alias": "seller",
+      "amount_atomic": 1250000000000
+    },
+    {
+      "type": "refund_multisig",
+      "to_alias": "buyer",
+      "amount_atomic": 1250000000000,
+      "when": "oracle_condition_failed"
+    }
+  ]
+}

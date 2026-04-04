@@ -260,6 +260,15 @@ namespace tools
    */
   bool sha256sum(const std::string &filename, crypto::hash &hash);
 
+  /**
+   * \brief Generates a deterministic Web3-style identifier from arbitrary input.
+   *
+   * \details The return value uses an Ethereum-like "0x" prefix followed by
+   * 40 lowercase hex chars (20 bytes), derived from Monero's Keccak-based
+   * fast hash of `seed`.
+   */
+  std::string make_unique_web3_id(const std::string &seed);
+
   boost::optional<bool> is_hdd(const char *path);
 
   boost::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const std::string& str);

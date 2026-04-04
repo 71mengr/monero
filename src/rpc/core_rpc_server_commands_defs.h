@@ -90,7 +90,7 @@ namespace cryptonote
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define CORE_RPC_VERSION_MAJOR 3
-#define CORE_RPC_VERSION_MINOR 16
+#define CORE_RPC_VERSION_MINOR 17
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
@@ -2210,6 +2210,42 @@ namespace cryptonote
         KV_SERIALIZE_OPT(current_height, (uint64_t)0)
         KV_SERIALIZE_OPT(target_height, (uint64_t)0)
         KV_SERIALIZE_OPT(hard_forks, std::vector<hf_entry>())
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_GET_WEB3_NETWORK
+  {
+    struct request_t: public rpc_request_base
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      std::string network;
+      bool mainnet;
+      bool testnet;
+      bool stagenet;
+      uint64_t chain_id;
+      std::string chain_id_hex;
+      std::string network_id;
+      std::string web3_unique_id;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(network)
+        KV_SERIALIZE(mainnet)
+        KV_SERIALIZE(testnet)
+        KV_SERIALIZE(stagenet)
+        KV_SERIALIZE(chain_id)
+        KV_SERIALIZE(chain_id_hex)
+        KV_SERIALIZE(network_id)
+        KV_SERIALIZE(web3_unique_id)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

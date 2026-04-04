@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <sstream>
 #include <unordered_set>
 #include <boost/asio/dispatch.hpp>
 #include <boost/filesystem.hpp>
@@ -61,6 +62,7 @@
 #include "common/notify.h"
 #include "common/varint.h"
 #include "common/pruning.h"
+#include "common/mvm.h"
 #include "common/data_cache.h"
 #include "time_helper.h"
 #include "serialization/binary_utils.h"
@@ -255,6 +257,77 @@ bool get_registration_payload_from_tx(
     cryptonote::masternode_registration_payload& registration_payload)
 {
   return cryptonote::get_masternode_registration_from_tx_extra(tx.extra, registration_payload);
+}
+
+bool get_mvm_contract_from_tx(
+    const cryptonote::transaction& tx,
+    cryptonote::tx_extra_mvm_contract& mvm_contract)
+{
+  std::vector<cryptonote::tx_extra_field> tx_extra_fields;
+  if (!cryptonote::parse_tx_extra(tx.extra, tx_extra_fields))
+    return false;
+
+  size_t contract_count = 0;
+  for (const auto& field : tx_extra_fields)
+  {
+    if (field.type() != typeid(cryptonote::tx_extra_mvm_contract))
+      continue;
+    ++contract_count;
+    mvm_contract = boost::get<cryptonote::tx_extra_mvm_contract>(field);
+  }
+
+  if (contract_count != 1)
+    return false;
+
+  uint64_t total_received = 0;
+  for (const auto &out : tx.vout)
+  {
+    if (out.amount > std::numeric_limits<uint64_t>::max() - total_received)
+      return false;
+    total_received += out.amount;
+  }
+
+  if (!tools::validate_mvm_p2p_payload(
+        mvm_contract.action,
+        total_received,
+        mvm_contract.token_supply,
+        mvm_contract.token_amount,
+        mvm_contract.token_from,
+        mvm_contract.token_to))
+    return false;
+
+  if ((mvm_contract.action == "create_contract" || mvm_contract.action == "create_token") && !mvm_contract.bytecode_hex.empty())
+  {
+    if (!tools::validate_mvm_bytecode_hex_program(mvm_contract.bytecode_hex))
+      return false;
+  }
+
+  return true;
+}
+
+cryptonote::blobdata serialize_mvm_contract_blob(
+    const crypto::hash& tx_hash,
+    const uint64_t height,
+    const uint64_t timestamp,
+    const cryptonote::tx_extra_mvm_contract& mvm_contract)
+{
+  std::ostringstream oss;
+  oss << "txid=" << epee::string_tools::pod_to_hex(tx_hash)
+      << ";height=" << height
+      << ";timestamp=" << timestamp
+      << ";version=" << static_cast<unsigned>(mvm_contract.version)
+      << ";action=" << mvm_contract.action
+      << ";contract_id=" << mvm_contract.contract_id
+      << ";code_hash=" << mvm_contract.code_hash
+      << ";token_symbol=" << mvm_contract.token_symbol
+      << ";token_name=" << mvm_contract.token_name
+      << ";token_supply=" << mvm_contract.token_supply
+      << ";token_decimals=" << static_cast<unsigned>(mvm_contract.token_decimals)
+      << ";token_from=" << mvm_contract.token_from
+      << ";token_to=" << mvm_contract.token_to
+      << ";token_amount=" << mvm_contract.token_amount
+      << ";bytecode_hex=" << mvm_contract.bytecode_hex;
+  return oss.str();
 }
 }
 
@@ -930,6 +1003,39 @@ void Blockchain::apply_masternode_registrations_from_block(
 
   if (!block_undo.transitions.empty())
     m_masternode_undo_journal.push_back(std::move(block_undo));
+}
+//------------------------------------------------------------------
+void Blockchain::apply_mvm_contracts_from_block(
+    const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
+    const uint64_t height,
+    const uint64_t timestamp)
+{
+  if (!tools::is_mvm_mainnet_enabled(m_nettype))
+    return;
+
+  for (const auto& tx_entry : txs)
+  {
+    const auto& tx = tx_entry.first;
+    cryptonote::tx_extra_mvm_contract mvm_contract{};
+    if (!get_mvm_contract_from_tx(tx, mvm_contract))
+      continue;
+
+    if ((mvm_contract.action == "create_contract" || mvm_contract.action == "create_token") && !mvm_contract.bytecode_hex.empty())
+    {
+      std::string error;
+      if (!tools::validate_mvm_bytecode_hex_program(mvm_contract.bytecode_hex, &error))
+      {
+        MWARNING("Skipping invalid MVM bytecode payload from tx due to: " << error);
+        continue;
+      }
+    }
+
+    const crypto::hash tx_hash = get_transaction_hash(tx);
+    const cryptonote::blobdata blob = serialize_mvm_contract_blob(tx_hash, height, timestamp, mvm_contract);
+    m_db->set_mvm_contract_blob(mvm_contract.contract_id, blob);
+    const std::string timeline_key = mvm_contract.contract_id + ":" + std::to_string(height) + ":" + epee::string_tools::pod_to_hex(tx_hash);
+    m_db->set_mvm_contract_blob(timeline_key, blob);
+  }
 }
 //------------------------------------------------------------------
 void Blockchain::rebuild_masternode_state_from_chain()
@@ -5008,6 +5114,7 @@ leave:
 
   if (new_hf_version >= HF_MN_REG)
     apply_masternode_registrations_from_block(txs, new_height - 1, bl.timestamp);
+  apply_mvm_contracts_from_block(txs, new_height - 1, bl.timestamp);
 
   const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
 

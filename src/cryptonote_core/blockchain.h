@@ -1166,6 +1166,10 @@ namespace cryptonote
         const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
         uint64_t height,
         uint64_t timestamp);
+    void apply_mvm_contracts_from_block(
+        const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
+        uint64_t height,
+        uint64_t timestamp);
     void rebuild_masternode_state_from_chain();
     void revert_masternode_transitions_for_block(uint64_t height);
 

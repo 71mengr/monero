@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVM dApp Wallet Connector</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>MVM dApp</h1>
+      <p class="subtitle">Connect EVM or Monero-compatible wallets and prepare MVM contract payloads.</p>
+
+      <section class="card">
+        <h2>Wallet Connections</h2>
+        <div class="actions">
+          <button id="connect-evm">Connect EVM Wallet</button>
+          <button id="connect-monero">Connect Monero Wallet</button>
+        </div>
+        <dl class="status-grid">
+          <dt>EVM Account</dt><dd id="evm-account">Not connected</dd>
+          <dt>EVM Chain ID</dt><dd id="evm-chain">-</dd>
+          <dt>Monero Address</dt><dd id="monero-account">Not connected</dd>
+        </dl>
+      </section>
+
+      <section class="card">
+        <h2>Daemon Identity</h2>
+        <label>Daemon URL <input id="daemon-url" value="http://127.0.0.1:18081" /></label>
+        <button id="load-network">Load /get_web3_network</button>
+        <pre id="network-json">{}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Create MVM Contract Payload</h2>
+        <label>Bytecode Hex <textarea id="bytecode" rows="4" placeholder="0x..."></textarea></label>
+        <button id="build-payload">Build Payload</button>
+        <pre id="payload-json">{}</pre>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

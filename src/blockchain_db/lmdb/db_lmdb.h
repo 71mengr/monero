@@ -315,6 +315,10 @@ public:
   virtual void remove_masternode_blob(const std::string& id);
   virtual bool get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const;
   virtual bool for_all_masternode_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const;
+  virtual void set_mvm_contract_blob(const std::string& id, const cryptonote::blobdata& blob);
+  virtual void remove_mvm_contract_blob(const std::string& id);
+  virtual bool get_mvm_contract_blob(const std::string& id, cryptonote::blobdata& blob) const;
+  virtual bool for_all_mvm_contract_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const;
 
   virtual uint64_t add_block( const std::pair<block, blobdata>& blk
                             , size_t block_weight

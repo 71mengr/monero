@@ -1792,6 +1792,8 @@ public:
    */
   virtual void set_masternode_blob(const std::string& id, const cryptonote::blobdata& blob) = 0;
   virtual void remove_masternode_blob(const std::string& id) = 0;
+  virtual void set_mvm_contract_blob(const std::string& id, const cryptonote::blobdata& blob) = 0;
+  virtual void remove_mvm_contract_blob(const std::string& id) = 0;
 
   /**
    * @brief retrieves serialized masternode state by id
@@ -1802,6 +1804,7 @@ public:
    * @return true if found
    */
   virtual bool get_masternode_blob(const std::string& id, cryptonote::blobdata& blob) const = 0;
+  virtual bool get_mvm_contract_blob(const std::string& id, cryptonote::blobdata& blob) const = 0;
 
   /**
    * @brief iterate over all serialized masternode states
@@ -1811,6 +1814,7 @@ public:
    * @return false if callback returns false, otherwise true
    */
   virtual bool for_all_masternode_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const = 0;
+  virtual bool for_all_mvm_contract_blobs(std::function<bool(const std::string&, const cryptonote::blobdata&)> f) const = 0;
 
 
   //

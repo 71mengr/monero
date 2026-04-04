@@ -1,0 +1,24 @@
+{
+  "mvm": "1.0",
+  "name": "escrow_unlock_if_conditions_met",
+  "description": "Unlocks escrow when block height and oracle verdict conditions are true",
+  "program": [
+    { "op": "LOAD", "key": "current_height" },
+    { "op": "LOAD", "key": "unlock_height" },
+    { "op": "GT" },
+    { "op": "ASSERT", "message": "height not reached" },
+
+    { "op": "LOAD", "key": "delivery_ok" },
+    { "op": "PUSH", "value": 1 },
+    { "op": "EQ" },
+    { "op": "ASSERT", "message": "delivery condition failed" },
+
+    { "op": "LOAD", "key": "escrow_amount_atomic" },
+    { "op": "STORE", "key": "release_amount_atomic" },
+
+    { "op": "LOAD", "key": "release_amount_atomic" },
+    { "op": "EMIT", "name": "ReleaseApproved" },
+
+    { "op": "HALT" }
+  ]
+}

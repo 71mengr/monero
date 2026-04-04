@@ -89,6 +89,7 @@ set(unit_tests_sources
   test_protocol_pack.cpp
   threadpool.cpp
   tx_proof.cpp
+  tx_extra_mvm.cpp
   hardfork.cpp
   unbound.cpp
   uri.cpp

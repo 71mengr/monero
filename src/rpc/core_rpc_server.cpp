@@ -30,8 +30,10 @@
 
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/uuid/nil_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <boost/filesystem.hpp>
 #include <algorithm>
+#include <sstream>
 #include "include_base_utils.h"
 #include "string_tools.h"
 using namespace epee;
@@ -144,6 +146,37 @@ namespace
   void store_difficulty(cryptonote::difficulty_type difficulty, uint64_t &sdiff, std::string &swdiff, uint64_t &stop64)
   {
     store_128(difficulty, sdiff, swdiff, stop64);
+  }
+
+  uint64_t nettype_chain_id(const cryptonote::network_type nettype)
+  {
+    switch (nettype)
+    {
+      case cryptonote::MAINNET: return 0x12;
+      case cryptonote::TESTNET: return 0x35;
+      case cryptonote::STAGENET: return 0x24;
+      case cryptonote::FAKECHAIN: return 0x99;
+      default: return 0;
+    }
+  }
+
+  std::string chain_id_to_hex(const uint64_t chain_id)
+  {
+    std::ostringstream hex;
+    hex << "0x" << std::hex << chain_id;
+    return hex.str();
+  }
+
+  std::string nettype_name(const cryptonote::network_type nettype)
+  {
+    switch (nettype)
+    {
+      case cryptonote::MAINNET: return "mainnet";
+      case cryptonote::TESTNET: return "testnet";
+      case cryptonote::STAGENET: return "stagenet";
+      case cryptonote::FAKECHAIN: return "fakechain";
+      default: return "unknown";
+    }
   }
 }
 
@@ -573,6 +606,24 @@ namespace cryptonote
     res.restricted = restricted;
 
     res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_web3_network(const COMMAND_RPC_GET_WEB3_NETWORK::request& req, COMMAND_RPC_GET_WEB3_NETWORK::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_web3_network);
+    const network_type current_network = nettype();
+    const auto &config = get_config(current_network);
+    res.mainnet = current_network == MAINNET;
+    res.testnet = current_network == TESTNET;
+    res.stagenet = current_network == STAGENET;
+    res.network = nettype_name(current_network);
+    res.chain_id = nettype_chain_id(current_network);
+    res.chain_id_hex = chain_id_to_hex(res.chain_id);
+    res.network_id = boost::uuids::to_string(config.NETWORK_ID);
+    res.web3_unique_id = tools::make_unique_web3_id(res.network + ":" + res.network_id + ":" + res.chain_id_hex);
+    res.status = CORE_RPC_STATUS_OK;
+    res.untrusted = false;
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -2827,6 +2878,17 @@ namespace cryptonote
   bool core_rpc_server::on_get_info_json(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RPC_GET_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     if (!on_get_info(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_web3_network_json(const COMMAND_RPC_GET_WEB3_NETWORK::request& req, COMMAND_RPC_GET_WEB3_NETWORK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_web3_network(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = res.status;

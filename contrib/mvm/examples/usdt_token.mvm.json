@@ -1,0 +1,16 @@
+{
+  "mvm": "1.1",
+  "program": [
+    {"op": "PUSH", "value": 2},
+    {"op": "PUSH", "value": 3},
+    {"op": "ADD"},
+    {"op": "EMIT", "name": "AddCheck"},
+    {"op": "CREATE_CONTRACT", "contract_id": "msc_usdt_mainnet_v1", "code_hash": "0xabc123", "creator": "issuer"},
+    {"op": "CREATE_TOKEN", "contract_id": "msc_usdt_mainnet_v1", "symbol": "USDT", "name": "Tether USD (MVM)", "supply": 1000000000000, "decimals": 6, "owner": "issuer"},
+    {"op": "TRANSFER_TOKEN", "symbol": "USDT", "from": "issuer", "to": "alice", "amount": 2500000},
+    {"op": "MINT_TOKEN", "symbol": "USDT", "to": "treasury", "amount": 5000000},
+    {"op": "BLOCK_HEIGHT"},
+    {"op": "EMIT", "name": "ExecutedAtHeight"},
+    {"op": "HALT"}
+  ]
+}

@@ -1,0 +1,26 @@
+# Monero VM Contract source (MVC) demonstrating full opcode surface.
+PUSH 2
+PUSH 3
+ADD
+EMIT name=AddCheck pop=1
+
+PUSH 10
+STORE key=threshold
+LOAD key=threshold
+PUSH 8
+GT
+ASSERT message=threshold_check_failed
+
+PUSH 5
+DUP
+PUSH 1
+SWAP
+SUB
+
+CREATE_CONTRACT contract_id=msc_usdt_mainnet_v1 code_hash=0xabc123 creator=issuer
+CREATE_TOKEN contract_id=msc_usdt_mainnet_v1 symbol=USDT name=TetherUSD owner=issuer supply=1000000000000 decimals=6
+TRANSFER_TOKEN symbol=USDT from=issuer to=alice amount=2500000
+MINT_TOKEN symbol=USDT to=treasury amount=5000000
+BLOCK_HEIGHT
+EMIT name=ExecutedAtHeight pop=1
+HALT

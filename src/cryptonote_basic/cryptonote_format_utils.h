@@ -88,6 +88,8 @@ namespace cryptonote
   bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, masternode_registration_payload& registration);
   bool add_masternode_registration_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& registration);
   bool get_masternode_registration_from_tx_extra(const std::vector<uint8_t>& tx_extra, std::string& registration);
+  bool add_mvm_contract_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_mvm_contract& contract);
+  bool get_mvm_contract_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_mvm_contract& contract);
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce);
   bool add_mm_merkle_root_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& mm_merkle_root, size_t mm_merkle_tree_depth);
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type);

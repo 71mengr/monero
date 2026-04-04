@@ -12367,6 +12367,45 @@ uint64_t wallet2::get_num_rct_outputs()
 
   return resp_t.histogram[0].total_instances;
 }
+bool wallet2::make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
+{
+  extra.clear();
+  cryptonote::tx_extra_mvm_contract contract{};
+  contract.action = action;
+  contract.contract_id = contract_id;
+  contract.code_hash = code_hash;
+  contract.bytecode_hex = bytecode_hex;
+  return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
+{
+  extra.clear();
+  cryptonote::tx_extra_mvm_contract contract{};
+  contract.action = "create_token";
+  contract.contract_id = contract_id;
+  contract.code_hash = code_hash;
+  contract.token_symbol = symbol;
+  contract.token_name = name;
+  contract.token_supply = supply;
+  contract.token_decimals = decimals;
+  contract.bytecode_hex = bytecode_hex;
+  return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::make_mvm_token_transfer_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &from, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const
+{
+  extra.clear();
+  cryptonote::tx_extra_mvm_contract contract{};
+  contract.action = "transfer_token";
+  contract.contract_id = contract_id;
+  contract.code_hash = code_hash;
+  contract.token_symbol = symbol;
+  contract.token_from = from;
+  contract.token_to = to;
+  contract.token_amount = amount;
+  return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
+}
 //----------------------------------------------------------------------------------------------------
 const wallet2::transfer_details &wallet2::get_transfer_details(size_t idx) const
 {

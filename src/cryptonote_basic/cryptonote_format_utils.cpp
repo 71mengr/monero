@@ -642,6 +642,7 @@ namespace cryptonote
     if (!pick<tx_extra_pub_key>(nar, tx_extra_fields, TX_EXTRA_TAG_PUBKEY)) return false;
     if (!pick<tx_extra_additional_pub_keys>(nar, tx_extra_fields, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS)) return false;
     if (!pick<tx_extra_masternode_registration>(nar, tx_extra_fields, TX_EXTRA_TAG_MASTERNODE_REGISTRATION)) return false;
+    if (!pick<tx_extra_mvm_contract>(nar, tx_extra_fields, TX_EXTRA_TAG_MVM_CONTRACT)) return false;
     if (!pick<tx_extra_nonce>(nar, tx_extra_fields, TX_EXTRA_NONCE)) return false;
     if (!pick<tx_extra_merge_mining_tag>(nar, tx_extra_fields, TX_EXTRA_MERGE_MINING_TAG)) return false;
     if (!pick<tx_extra_mysterious_minergate>(nar, tx_extra_fields, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG)) return false;
@@ -803,6 +804,32 @@ namespace cryptonote
     blobdata payload_blob;
     CHECK_AND_ASSERT_MES(t_serializable_object_to_blob(payload, payload_blob), false, "failed to serialize canonical masternode registration payload");
     registration = epee::string_tools::buff_to_hex_nodelimer(payload_blob);
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool add_mvm_contract_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_mvm_contract& contract)
+  {
+    tx_extra_field field = contract;
+    std::ostringstream oss;
+    binary_archive<true> ar(oss);
+    const bool r = ::do_serialize(ar, field);
+    CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra MVM contract");
+    const std::string tx_extra_str = oss.str();
+    const size_t pos = tx_extra.size();
+    tx_extra.resize(tx_extra.size() + tx_extra_str.size());
+    memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool get_mvm_contract_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_mvm_contract& contract)
+  {
+    contract = {};
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(tx_extra, tx_extra_fields);
+    tx_extra_mvm_contract contract_field;
+    if (!find_tx_extra_field_by_type(tx_extra_fields, contract_field))
+      return false;
+    contract = contract_field;
     return true;
   }
   //---------------------------------------------------------------

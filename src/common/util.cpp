@@ -1006,6 +1006,13 @@ std::string get_nix_version_display_string()
     return true;
   }
 
+  std::string make_unique_web3_id(const std::string &seed)
+  {
+    const crypto::hash digest = crypto::cn_fast_hash(seed.data(), seed.size());
+    const std::string digest_hex = epee::string_tools::pod_to_hex(digest);
+    return "0x" + digest_hex.substr(0, 40);
+  }
+
   boost::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const std::string& str)
   {
     auto pos = str.find(":");

@@ -1251,7 +1251,7 @@ bool simple_wallet::mvm_create_contract(const std::vector<std::string> &args)
   }
   else
   {
-    info.address = m_wallet->get_account().get_public_address();
+    info.address = m_wallet->get_account().get_keys().m_account_address;
     info.is_subaddress = false;
     info.has_payment_id = false;
   }
@@ -1600,17 +1600,17 @@ void simple_wallet::print_mvm_token_balances_for_address(const std::string &toke
   if (balances.empty() && !show_empty_state)
     return;
 
-  message_writer(epee::log_space::console_color_magenta, false) << title;
-  message_writer(epee::log_space::console_color_default, false)
+  message_writer(console_color_magenta, false) << title;
+  message_writer(console_color_default, false)
     << (boost::format("%-12s %-18s %-18s %-18s") % "SYMBOL" % "BALANCE" % "RECEIVED" % "SENT");
-  message_writer(epee::log_space::console_color_default, false)
+  message_writer(console_color_default, false)
     << (boost::format("%-12s %-18s %-18s %-18s") % "------------" % "------------------" % "------------------" % "------------------");
 
   if (balances.empty())
   {
     if (show_empty_state)
     {
-      message_writer(epee::log_space::console_color_yellow, false)
+      message_writer(console_color_yellow, false)
         << tr("No token transfers found for token address: ") << token_address;
     }
     return;
@@ -1618,11 +1618,11 @@ void simple_wallet::print_mvm_token_balances_for_address(const std::string &toke
 
   for (const auto &entry : balances)
   {
-    message_writer(epee::log_space::console_color_green, false)
+    message_writer(console_color_green, false)
       << (boost::format("%-12s %-18llu %-18llu %-18llu") % entry.symbol % entry.balance % entry.received % entry.sent);
-    message_writer(epee::log_space::console_color_default, false)
+    message_writer(console_color_default, false)
       << (boost::format("    contract_id: %s") % entry.contract_id);
-    message_writer(epee::log_space::console_color_default, false)
+    message_writer(console_color_default, false)
       << (boost::format("    code_hash  : %s") % entry.code_hash);
   }
 }
@@ -1643,28 +1643,28 @@ bool simple_wallet::mvm_contracts(const std::vector<std::string> &args)
   std::vector<tools::wallet2::mvm_contract_entry> contracts;
   m_wallet->get_mvm_contract_history(contracts);
 
-  message_writer(epee::log_space::console_color_magenta, false) << tr("━━━ Smart Contract Activity ━━━");
-  message_writer(epee::log_space::console_color_default, false)
+  message_writer(console_color_magenta, false) << tr("━━━ Smart Contract Activity ━━━");
+  message_writer(console_color_default, false)
     << (boost::format("%-14s %-12s %-19s %-20s") % "ACTION" % "SYMBOL" % "BLOCK_HEIGHT" % "TOKEN_NAME");
-  message_writer(epee::log_space::console_color_default, false)
+  message_writer(console_color_default, false)
     << (boost::format("%-14s %-12s %-19s %-20s") % "--------------" % "------------" % "-------------------" % "--------------------");
 
   if (contracts.empty())
   {
-    message_writer(epee::log_space::console_color_yellow, false)
+    message_writer(console_color_yellow, false)
       << tr("No smart-contract activity found in this wallet history.");
     return true;
   }
 
   for (const auto &entry : contracts)
   {
-    message_writer(epee::log_space::console_color_green, false)
+    message_writer(console_color_green, false)
       << (boost::format("%-14s %-12s %-19llu %-20s") % entry.action % entry.token_symbol % entry.block_height % entry.token_name);
-    message_writer(epee::log_space::console_color_default, false)
+    message_writer(console_color_default, false)
       << (boost::format("    contract_id: %s") % entry.contract_id);
-    message_writer(epee::log_space::console_color_default, false)
+    message_writer(console_color_default, false)
       << (boost::format("    code_hash  : %s") % entry.code_hash);
-    message_writer(epee::log_space::console_color_default, false)
+    message_writer(console_color_default, false)
       << (boost::format("    txid       : %s") % epee::string_tools::pod_to_hex(entry.txid));
   }
 

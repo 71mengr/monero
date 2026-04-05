@@ -75,9 +75,9 @@ namespace tools
     return make_unique_web3_id("mvm:code:" + bytecode_hex);
   }
 
-  std::string derive_mvm_contract_id(const std::string &bytecode_hex)
+  std::string derive_mvm_contract_id(const std::string &bytecode_hex, const std::string &salt)
   {
-    return std::string("mvmc_") + make_unique_web3_id("mvm:contract:" + bytecode_hex).substr(2);
+    return std::string("mvmc_") + make_unique_web3_id("mvm:contract:" + bytecode_hex + ":" + salt).substr(2);
   }
 
   bool validate_mvm_supply_amount(uint64_t token_supply, uint64_t token_amount)

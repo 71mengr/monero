@@ -319,6 +319,7 @@ cryptonote::blobdata serialize_mvm_contract_blob(
       << ";action=" << mvm_contract.action
       << ";contract_id=" << mvm_contract.contract_id
       << ";code_hash=" << mvm_contract.code_hash
+      << ";salt=" << mvm_contract.salt
       << ";token_symbol=" << mvm_contract.token_symbol
       << ";token_name=" << mvm_contract.token_name
       << ";token_supply=" << mvm_contract.token_supply
@@ -331,6 +332,114 @@ cryptonote::blobdata serialize_mvm_contract_blob(
       << ";has_monero_block_height=" << (mvm_contract.has_monero_block_height ? 1 : 0)
       << ";monero_block_height=" << mvm_contract.monero_block_height;
   return oss.str();
+}
+
+std::string make_mvm_token_balance_key(const std::string& contract_id, const std::string& code_hash, const std::string& token_address)
+{
+  return contract_id + "|" + code_hash + "|" + token_address;
+}
+
+template <typename ContractMap, typename BalanceMap>
+bool apply_mvm_state_transition(
+    ContractMap& contracts,
+    BalanceMap& balances,
+    const cryptonote::tx_extra_mvm_contract& mvm_contract,
+    std::string* error = nullptr)
+{
+  auto set_error = [&error](const std::string& msg)
+  {
+    if (error)
+      *error = msg;
+  };
+
+  if (mvm_contract.action == "create_contract")
+  {
+    if (contracts.count(mvm_contract.contract_id))
+    {
+      set_error("duplicate contract_id");
+      return false;
+    }
+    contracts.emplace(mvm_contract.contract_id, typename ContractMap::mapped_type{
+      mvm_contract.contract_id, mvm_contract.code_hash, "", "", 0, 0, false
+    });
+    return true;
+  }
+
+  if (mvm_contract.action == "create_token")
+  {
+    if (contracts.count(mvm_contract.contract_id))
+    {
+      set_error("duplicate token contract_id");
+      return false;
+    }
+
+    typename ContractMap::mapped_type state{};
+    state.contract_id = mvm_contract.contract_id;
+    state.code_hash = mvm_contract.code_hash;
+    state.symbol = mvm_contract.token_symbol;
+    state.name = mvm_contract.token_name;
+    state.token_supply = mvm_contract.token_supply;
+    state.minted = 0;
+    state.is_token = true;
+    contracts.emplace(mvm_contract.contract_id, std::move(state));
+    return true;
+  }
+
+  const auto contract_it = contracts.find(mvm_contract.contract_id);
+  if (contract_it == contracts.end())
+  {
+    set_error("referenced contract_id not found");
+    return false;
+  }
+
+  if (!contract_it->second.is_token)
+  {
+    set_error("referenced contract is not a token contract");
+    return false;
+  }
+
+  if (contract_it->second.code_hash != mvm_contract.code_hash)
+  {
+    set_error("code_hash mismatch");
+    return false;
+  }
+
+  if (!mvm_contract.token_symbol.empty() && contract_it->second.symbol != mvm_contract.token_symbol)
+  {
+    set_error("token_symbol mismatch");
+    return false;
+  }
+
+  if (mvm_contract.action == "mint_token")
+  {
+    if (mvm_contract.token_amount > contract_it->second.token_supply - contract_it->second.minted)
+    {
+      set_error("mint exceeds token supply");
+      return false;
+    }
+    contract_it->second.minted += mvm_contract.token_amount;
+    const std::string to_key = make_mvm_token_balance_key(mvm_contract.contract_id, mvm_contract.code_hash, mvm_contract.token_to);
+    balances[to_key] += mvm_contract.token_amount;
+    return true;
+  }
+
+  if (mvm_contract.action == "transfer_token")
+  {
+    const std::string from_key = make_mvm_token_balance_key(mvm_contract.contract_id, mvm_contract.code_hash, mvm_contract.token_from);
+    const uint64_t from_balance = balances[from_key];
+    if (from_balance < mvm_contract.token_amount)
+    {
+      set_error("insufficient token balance");
+      return false;
+    }
+    const std::string to_key = make_mvm_token_balance_key(mvm_contract.contract_id, mvm_contract.code_hash, mvm_contract.token_to);
+    balances[from_key] = from_balance - mvm_contract.token_amount;
+    balances[to_key] += mvm_contract.token_amount;
+    return true;
+  }
+
+  set_error("unsupported action");
+  return false;
 }
 }
 
@@ -615,6 +724,7 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   // Bootstrap rule: local validator state is reconstructed from accepted chain history
   // at startup, not from peer sync summaries or persisted advisory blobs.
   rebuild_masternode_state_from_chain();
+  rebuild_mvm_state_from_chain();
 
   // check how far behind we are
   uint64_t top_block_timestamp = m_db->get_top_block_timestamp();
@@ -928,6 +1038,7 @@ block Blockchain::pop_block_from_blockchain()
 
   const uint64_t disconnected_height = m_db->height();
   revert_masternode_transitions_for_block(disconnected_height);
+  rebuild_mvm_state_from_chain();
 
   return popped_block;
 }
@@ -1008,13 +1119,39 @@ void Blockchain::apply_masternode_registrations_from_block(
     m_masternode_undo_journal.push_back(std::move(block_undo));
 }
 //------------------------------------------------------------------
-void Blockchain::apply_mvm_contracts_from_block(
+bool Blockchain::validate_mvm_contract_rules_for_block(
+    const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs) const
+{
+  if (!tools::is_mvm_mainnet_enabled(m_nettype))
+    return true;
+
+  auto contracts = m_mvm_contract_db;
+  auto balances = m_mvm_token_balances;
+  for (const auto& tx_entry : txs)
+  {
+    const auto& tx = tx_entry.first;
+    cryptonote::tx_extra_mvm_contract mvm_contract{};
+    if (!get_mvm_contract_from_tx(tx, mvm_contract))
+      continue;
+
+    std::string error;
+    if (!apply_mvm_state_transition(contracts, balances, mvm_contract, &error))
+    {
+      MERROR("MVM consensus transition rejected tx " << get_transaction_hash(tx) << ": " << error);
+      return false;
+    }
+  }
+
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::apply_mvm_contracts_from_block(
     const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
     const uint64_t height,
     const uint64_t timestamp)
 {
   if (!tools::is_mvm_mainnet_enabled(m_nettype))
-    return;
+    return true;
 
   for (const auto& tx_entry : txs)
   {
@@ -1033,6 +1170,13 @@ void Blockchain::apply_mvm_contracts_from_block(
       }
     }
 
+    std::string transition_error;
+    if (!apply_mvm_state_transition(m_mvm_contract_db, m_mvm_token_balances, mvm_contract, &transition_error))
+    {
+      MERROR("MVM state transition failed for tx " << get_transaction_hash(tx) << ": " << transition_error);
+      return false;
+    }
+
     const crypto::hash tx_hash = get_transaction_hash(tx);
     // For mainnet indexing, deployment provenance comes from the enclosing Monero tx itself.
     // This overrides any optional payload hints carried in tx_extra.
@@ -1044,6 +1188,45 @@ void Blockchain::apply_mvm_contracts_from_block(
     const std::string timeline_key = mvm_contract.contract_id + ":" + std::to_string(height) + ":" + epee::string_tools::pod_to_hex(tx_hash);
     m_db->set_mvm_contract_blob(timeline_key, blob);
   }
+
+  return true;
+}
+//------------------------------------------------------------------
+void Blockchain::rebuild_mvm_state_from_chain()
+{
+  m_mvm_contract_db.clear();
+  m_mvm_token_balances.clear();
+
+  std::vector<std::string> existing_keys;
+  m_db->for_all_mvm_contract_blobs([&existing_keys](const std::string& key, const cryptonote::blobdata&) {
+    existing_keys.push_back(key);
+    return true;
+  });
+  for (const auto& key : existing_keys)
+    m_db->remove_mvm_contract_blob(key);
+
+  const uint64_t chain_height = m_db->height();
+  if (chain_height == 0)
+    return;
+
+  for (uint64_t height = 0; height < chain_height; ++height)
+  {
+    const block blk = m_db->get_block_from_height(height);
+    if (blk.tx_hashes.empty())
+      continue;
+
+    const std::vector<transaction> txs = m_db->get_tx_list(blk.tx_hashes);
+    std::vector<std::pair<transaction, cryptonote::blobdata>> tx_entries;
+    tx_entries.reserve(txs.size());
+    for (const auto& tx : txs)
+      tx_entries.emplace_back(tx, cryptonote::blobdata{});
+
+    if (!apply_mvm_contracts_from_block(tx_entries, height, blk.timestamp))
+      MWARNING("Failed to rebuild MVM state from chain at height " << height);
+  }
+
+  MINFO("Bootstrapped MVM state from chain history: " << m_mvm_contract_db.size() << " contracts, "
+        << m_mvm_token_balances.size() << " token account entries");
 }
 //------------------------------------------------------------------
 void Blockchain::rebuild_masternode_state_from_chain()
@@ -5049,6 +5232,13 @@ leave:
       return_txs_to_pool();
       return false;
     }
+    if (m_hardfork->get_current_version() >= HF_MN_REG && !validate_mvm_contract_rules_for_block(txs))
+    {
+      MERROR_VER("Block with id: " << id << " failed MVM consensus checks");
+      bvc.m_verifivation_failed = true;
+      return_txs_to_pool();
+      return false;
+    }
 
     try
     {
@@ -5122,7 +5312,12 @@ leave:
 
   if (new_hf_version >= HF_MN_REG)
     apply_masternode_registrations_from_block(txs, new_height - 1, bl.timestamp);
-  apply_mvm_contracts_from_block(txs, new_height - 1, bl.timestamp);
+  if (!apply_mvm_contracts_from_block(txs, new_height - 1, bl.timestamp))
+  {
+    MERROR("Failed to apply MVM state transitions at height " << (new_height - 1));
+    pop_block_from_blockchain();
+    return false;
+  }
 
   const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
 

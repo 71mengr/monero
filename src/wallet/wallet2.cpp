@@ -12367,24 +12367,26 @@ uint64_t wallet2::get_num_rct_outputs()
 
   return resp_t.histogram[0].total_instances;
 }
-bool wallet2::make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
+bool wallet2::make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &salt, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
 {
   extra.clear();
   cryptonote::tx_extra_mvm_contract contract{};
   contract.action = action;
   contract.contract_id = contract_id;
   contract.code_hash = code_hash;
+  contract.salt = salt;
   contract.bytecode_hex = bytecode_hex;
   return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
+bool wallet2::make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &salt, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const
 {
   extra.clear();
   cryptonote::tx_extra_mvm_contract contract{};
   contract.action = "create_token";
   contract.contract_id = contract_id;
   contract.code_hash = code_hash;
+  contract.salt = salt;
   contract.token_symbol = symbol;
   contract.token_name = name;
   contract.token_supply = supply;

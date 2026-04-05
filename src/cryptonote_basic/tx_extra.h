@@ -57,6 +57,7 @@ namespace cryptonote
   constexpr size_t TX_EXTRA_MVM_ACTION_MAX_SIZE = 32;
   constexpr size_t TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE = 64;
   constexpr size_t TX_EXTRA_MVM_CODE_HASH_MAX_SIZE = 64;
+  constexpr size_t TX_EXTRA_MVM_CONTRACT_SALT_MAX_SIZE = 64;
   constexpr size_t TX_EXTRA_MVM_TOKEN_SYMBOL_MAX_SIZE = 16;
   constexpr size_t TX_EXTRA_MVM_TOKEN_NAME_MAX_SIZE = 64;
   constexpr size_t TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE = 128;
@@ -243,6 +244,7 @@ namespace cryptonote
     std::string action;
     std::string contract_id;
     std::string code_hash;
+    std::string salt;
     std::string token_symbol;
     std::string token_name;
     uint64_t token_supply = 0;
@@ -260,6 +262,7 @@ namespace cryptonote
       FIELD(action)
       FIELD(contract_id)
       FIELD(code_hash)
+      FIELD(salt)
       FIELD(token_symbol)
       FIELD(token_name)
       FIELD(token_supply)
@@ -279,6 +282,7 @@ namespace cryptonote
       if (action.empty() || action.size() > TX_EXTRA_MVM_ACTION_MAX_SIZE) return false;
       if (contract_id.empty() || contract_id.size() > TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE) return false;
       if (code_hash.empty() || code_hash.size() > TX_EXTRA_MVM_CODE_HASH_MAX_SIZE) return false;
+      if (salt.size() > TX_EXTRA_MVM_CONTRACT_SALT_MAX_SIZE) return false;
       if (token_symbol.size() > TX_EXTRA_MVM_TOKEN_SYMBOL_MAX_SIZE) return false;
       if (token_name.size() > TX_EXTRA_MVM_TOKEN_NAME_MAX_SIZE) return false;
       if (token_decimals > 30) return false;

@@ -205,8 +205,8 @@ namespace
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
   const char* USAGE_MASTERNODE_REGISTER("masternode_register <collateral_amount> <address> <amount>");
-  const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<address> <amount>]");
-  const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount>");
+  const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
+  const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount> [<salt>]");
   const char* USAGE_MVM_MINT_TOKEN("mvm_mint_token <contract_id> <code_hash> <symbol> <to_token_address> <token_amount> <address> <amount>");
   const char* USAGE_MVM_TRANSFER_TOKEN("mvm_transfer_token <contract_id> <code_hash> <symbol> <from_token_address> <to_token_address> <token_amount> <address> <amount>");
   const char* USAGE_MVM_TOKENS("mvm_tokens [<token_address>]");
@@ -1224,7 +1224,7 @@ bool simple_wallet::mvm_create_contract(const std::vector<std::string> &args)
     return true;
   }
 
-  if (args.size() != 1 && args.size() != 3)
+  if (args.size() != 1 && args.size() != 2 && args.size() != 3 && args.size() != 4)
   {
     fail_msg_writer() << tr("usage: ") << tr(USAGE_MVM_CREATE_CONTRACT);
     return true;
@@ -1237,13 +1237,15 @@ bool simple_wallet::mvm_create_contract(const std::vector<std::string> &args)
     return true;
   }
 
-  const std::string contract_id = tools::derive_mvm_contract_id(bytecode_hex);
+  const std::string salt = (args.size() == 2 || args.size() == 4) ? args[1] : std::string{};
+  const std::string contract_id = tools::derive_mvm_contract_id(bytecode_hex, salt);
   const std::string code_hash = tools::derive_mvm_code_hash(bytecode_hex);
 
   cryptonote::address_parse_info info;
-  if (args.size() == 3)
+  if (args.size() >= 3)
   {
-    if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[1], oa_prompter))
+    const size_t address_arg = (args.size() == 3) ? 1 : 2;
+    if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[address_arg], oa_prompter))
     {
       fail_msg_writer() << tr("failed to parse address");
       return true;
@@ -1257,14 +1259,18 @@ bool simple_wallet::mvm_create_contract(const std::vector<std::string> &args)
   }
 
   uint64_t amount = 1;
-  if (args.size() == 3 && (!cryptonote::parse_amount(amount, args[2]) || amount == 0))
+  if (args.size() >= 3)
   {
-    fail_msg_writer() << tr("amount is wrong: ") << args[2];
-    return true;
+    const size_t amount_arg = (args.size() == 3) ? 2 : 3;
+    if (!cryptonote::parse_amount(amount, args[amount_arg]) || amount == 0)
+    {
+      fail_msg_writer() << tr("amount is wrong: ") << args[amount_arg];
+      return true;
+    }
   }
 
   std::vector<uint8_t> extra;
-  if (!m_wallet->make_mvm_contract_extra("create_contract", contract_id, code_hash, bytecode_hex, extra))
+  if (!m_wallet->make_mvm_contract_extra("create_contract", contract_id, code_hash, salt, bytecode_hex, extra))
   {
     fail_msg_writer() << tr("failed to build MVM create contract tx extra");
     return true;
@@ -1314,7 +1320,7 @@ bool simple_wallet::mvm_create_token(const std::vector<std::string> &args)
     return true;
   }
 
-  if (args.size() != 7)
+  if (args.size() != 7 && args.size() != 8)
   {
     fail_msg_writer() << tr("usage: ") << tr(USAGE_MVM_CREATE_TOKEN);
     return true;
@@ -1326,7 +1332,8 @@ bool simple_wallet::mvm_create_token(const std::vector<std::string> &args)
     fail_msg_writer() << tr("invalid bytecode: expected hex string or readable file containing hex bytecode");
     return true;
   }
-  const std::string contract_id = tools::derive_mvm_contract_id(bytecode_hex);
+  const std::string salt = args.size() == 8 ? args[7] : std::string{};
+  const std::string contract_id = tools::derive_mvm_contract_id(bytecode_hex, salt);
   const std::string code_hash = tools::derive_mvm_code_hash(bytecode_hex);
 
   uint64_t supply = 0;
@@ -1363,7 +1370,7 @@ bool simple_wallet::mvm_create_token(const std::vector<std::string> &args)
   }
 
   std::vector<uint8_t> extra;
-  if (!m_wallet->make_mvm_token_create_extra(contract_id, code_hash, args[1], args[2], supply, static_cast<uint8_t>(decimals64), bytecode_hex, extra))
+  if (!m_wallet->make_mvm_token_create_extra(contract_id, code_hash, salt, args[1], args[2], supply, static_cast<uint8_t>(decimals64), bytecode_hex, extra))
   {
     fail_msg_writer() << tr("failed to build MVM create token tx extra");
     return true;

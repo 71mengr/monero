@@ -1166,10 +1166,13 @@ namespace cryptonote
         const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
         uint64_t height,
         uint64_t timestamp);
-    void apply_mvm_contracts_from_block(
+    bool validate_mvm_contract_rules_for_block(
+        const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs) const;
+    bool apply_mvm_contracts_from_block(
         const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
         uint64_t height,
         uint64_t timestamp);
+    void rebuild_mvm_state_from_chain();
     void rebuild_masternode_state_from_chain();
     void revert_masternode_transitions_for_block(uint64_t height);
 
@@ -1211,6 +1214,19 @@ namespace cryptonote
       std::vector<masternode_transition_undo> transitions;
     };
     std::vector<masternode_block_undo> m_masternode_undo_journal;
+
+    struct mvm_contract_state
+    {
+      std::string contract_id;
+      std::string code_hash;
+      std::string symbol;
+      std::string name;
+      uint64_t token_supply = 0;
+      uint64_t minted = 0;
+      bool is_token = false;
+    };
+    std::unordered_map<std::string, mvm_contract_state> m_mvm_contract_db;
+    std::unordered_map<std::string, uint64_t> m_mvm_token_balances;
 
     // Keccak hashes for each block and for fast pow checking
     std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;

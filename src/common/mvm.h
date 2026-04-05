@@ -10,7 +10,7 @@ namespace tools
 
   bool normalize_mvm_bytecode_hex(const std::string &input, std::string &bytecode_hex);
   std::string derive_mvm_code_hash(const std::string &bytecode_hex);
-  std::string derive_mvm_contract_id(const std::string &bytecode_hex);
+  std::string derive_mvm_contract_id(const std::string &bytecode_hex, const std::string &salt = "");
 
   bool validate_mvm_supply_amount(uint64_t token_supply, uint64_t token_amount);
   bool validate_mvm_p2p_payload(const std::string &action, uint64_t total_received, uint64_t token_supply, uint64_t token_amount, const std::string &token_from, const std::string &token_to);

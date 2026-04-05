@@ -2916,6 +2916,9 @@ void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_inf
   if (masternodes.empty())
     return;
 
+  // Canonical validator state is derived from accepted chain history only.
+  // Any peer-synced masternode list is advisory at best and must never be
+  // allowed to mutate consensus-critical fields.
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   const uint64_t current_height = m_db->height();
   const uint64_t now = static_cast<uint64_t>(time(nullptr));
@@ -2924,26 +2927,22 @@ void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_inf
     if (masternode.id.empty())
       continue;
 
-    auto updated = masternode;
-    const auto existing = m_masternode_db.find(updated.id);
-    const bool has_existing = existing != m_masternode_db.end();
-    if (has_existing)
+    const auto existing = m_masternode_db.find(masternode.id);
+    if (existing == m_masternode_db.end())
     {
-      if (!existing->second.operator_key.empty())
-        m_masternode_by_operator_key.erase(existing->second.operator_key);
-      if (!existing->second.collateral_txid.empty())
-        m_masternode_by_collateral_outpoint.erase(existing->second.collateral_txid);
+      LOG_PRINT_L2("Ignoring peer-synced masternode id not present in canonical chain state: " << masternode.id);
+      continue;
     }
-    updated.online = updated.online || updated.active;
+
+    auto updated = existing->second;
+    // Preserve chain-derived state; only accept bounded liveness hints.
+    updated.online = masternode.online || updated.active;
     if (!updated.online)
       ++updated.penalty_points;
-
-    if (updated.registration_height == 0 && has_existing)
-      updated.registration_height = existing->second.registration_height;
-    if (updated.created_height == 0)
-      updated.created_height = has_existing ? existing->second.created_height : (updated.registration_height ? updated.registration_height : current_height);
-    if (updated.created_timestamp == 0)
-      updated.created_timestamp = has_existing ? existing->second.created_timestamp : now;
+    if (masternode.last_uptime_proof_height > updated.last_uptime_proof_height)
+      updated.last_uptime_proof_height = masternode.last_uptime_proof_height;
+    if (masternode.missed_duties > updated.missed_duties)
+      updated.missed_duties = masternode.missed_duties;
     updated.updated_height = current_height;
     updated.updated_timestamp = now;
 

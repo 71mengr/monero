@@ -36,6 +36,9 @@ TEST(bonded_validator_rules, collateral_payload_validation)
 
   payload.service_endpoints = {"tcp://1.2.3.4:18080", " tcp://1.2.3.4:18080 "};
   ASSERT_FALSE(payload.is_valid(&reason));
+
+  payload.service_endpoints = {"tcp://1.2.3.4:18080", "tcp://5.6.7.8:18080"};
+  ASSERT_FALSE(payload.is_valid(&reason));
 }
 
 TEST(bonded_validator_rules, bonded_validator_info_encoding_round_trip)

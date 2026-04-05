@@ -94,6 +94,11 @@ namespace cryptonote
       if (reason) *reason = "at least one service endpoint is required";
       return false;
     }
+    if (service_endpoints.size() > 1)
+    {
+      if (reason) *reason = "exactly one service endpoint is allowed per validator";
+      return false;
+    }
     std::unordered_set<std::string> normalized_endpoints;
     normalized_endpoints.reserve(service_endpoints.size());
     for (const std::string& endpoint : service_endpoints)

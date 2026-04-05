@@ -557,6 +557,31 @@ private:
       END_SERIALIZE()
     };
 
+    struct mvm_contract_entry
+    {
+      std::string action;
+      std::string contract_id;
+      std::string code_hash;
+      std::string token_symbol;
+      std::string token_name;
+      uint64_t token_supply;
+      uint8_t token_decimals;
+      crypto::hash txid;
+      uint64_t block_height;
+      uint64_t timestamp;
+    };
+
+    struct mvm_token_balance_entry
+    {
+      std::string contract_id;
+      std::string code_hash;
+      std::string symbol;
+      std::string token_address;
+      uint64_t received;
+      uint64_t sent;
+      uint64_t balance;
+    };
+
     struct tx_construction_data
     {
       std::vector<cryptonote::tx_source_entry> sources;
@@ -1203,6 +1228,8 @@ private:
     bool make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_transfer_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &from, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const;
+    void get_mvm_contract_history(std::vector<mvm_contract_entry> &contracts) const;
+    void get_mvm_token_balances(const std::string &token_address, std::vector<mvm_token_balance_entry> &balances) const;
     bool sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, const std::vector<cryptonote::tx_destination_entry>& dsts, const unique_index_container& subtract_fee_from_outputs = {}) const;
     void cold_tx_aux_import(const std::vector<pending_tx>& ptx, const std::vector<std::string>& tx_device_aux);
     void cold_sign_tx(const std::vector<pending_tx>& ptx_vector, signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::vector<std::string> & tx_device_aux);

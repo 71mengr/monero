@@ -232,6 +232,8 @@ namespace cryptonote
     bool mvm_create_contract(const std::vector<std::string> &args);
     bool mvm_create_token(const std::vector<std::string> &args);
     bool mvm_transfer_token(const std::vector<std::string> &args);
+    bool mvm_tokens(const std::vector<std::string> &args);
+    bool mvm_contracts(const std::vector<std::string> &args);
     bool print_fee_info(const std::vector<std::string> &args);
     bool prepare_multisig(const std::vector<std::string>& args);
     bool prepare_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
@@ -472,6 +474,7 @@ namespace cryptonote
     std::atomic<bool> m_suspend_rpc_payment_mining;
 
     std::unordered_map<std::string, uint32_t> m_claimed_cph;
+    void print_mvm_token_balances_for_address(const std::string &token_address, const std::string &title, bool show_empty_state);
 
     // MMS
     mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };

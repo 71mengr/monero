@@ -208,6 +208,8 @@ namespace
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<address> <amount>]");
   const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount>");
   const char* USAGE_MVM_TRANSFER_TOKEN("mvm_transfer_token <contract_id> <code_hash> <symbol> <from_token_address> <to_token_address> <token_amount> <address> <amount>");
+  const char* USAGE_MVM_TOKENS("mvm_tokens [<token_address>]");
+  const char* USAGE_MVM_CONTRACTS("mvm_contracts");
   const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [subtractfeefrom=<D0>[,<D1>,all,...]] [<payment_id>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ACCOUNT("sweep_account <account> [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
@@ -1484,6 +1486,104 @@ bool simple_wallet::mvm_transfer_token(const std::vector<std::string> &args)
   }
 
   success_msg_writer() << tr("MVM token transfer transaction submitted.");
+  return true;
+}
+
+bool simple_wallet::mvm_tokens(const std::vector<std::string> &args)
+{
+  if (!tools::is_mvm_mainnet_enabled(m_wallet->nettype()))
+  {
+    fail_msg_writer() << tr("MVM token view is mainnet-enabled only.");
+    return true;
+  }
+
+  if (args.size() > 1)
+  {
+    fail_msg_writer() << tr("usage: ") << tr(USAGE_MVM_TOKENS);
+    return true;
+  }
+
+  const std::string token_address = args.empty() ? m_wallet->get_address_as_str() : args.front();
+  print_mvm_token_balances_for_address(token_address, tr("━━━ Token Portfolio ━━━"), true);
+  return true;
+}
+
+void simple_wallet::print_mvm_token_balances_for_address(const std::string &token_address, const std::string &title, bool show_empty_state)
+{
+  std::vector<tools::wallet2::mvm_token_balance_entry> balances;
+  m_wallet->get_mvm_token_balances(token_address, balances);
+
+  if (balances.empty() && !show_empty_state)
+    return;
+
+  message_writer(epee::log_space::console_color_magenta, false) << title;
+  message_writer(epee::log_space::console_color_default, false)
+    << (boost::format("%-12s %-18s %-18s %-18s") % "SYMBOL" % "BALANCE" % "RECEIVED" % "SENT");
+  message_writer(epee::log_space::console_color_default, false)
+    << (boost::format("%-12s %-18s %-18s %-18s") % "------------" % "------------------" % "------------------" % "------------------");
+
+  if (balances.empty())
+  {
+    if (show_empty_state)
+    {
+      message_writer(epee::log_space::console_color_yellow, false)
+        << tr("No token transfers found for token address: ") << token_address;
+    }
+    return;
+  }
+
+  for (const auto &entry : balances)
+  {
+    message_writer(epee::log_space::console_color_green, false)
+      << (boost::format("%-12s %-18llu %-18llu %-18llu") % entry.symbol % entry.balance % entry.received % entry.sent);
+    message_writer(epee::log_space::console_color_default, false)
+      << (boost::format("    contract_id: %s") % entry.contract_id);
+    message_writer(epee::log_space::console_color_default, false)
+      << (boost::format("    code_hash  : %s") % entry.code_hash);
+  }
+}
+
+bool simple_wallet::mvm_contracts(const std::vector<std::string> &args)
+{
+  if (!tools::is_mvm_mainnet_enabled(m_wallet->nettype()))
+  {
+    fail_msg_writer() << tr("MVM contract view is mainnet-enabled only.");
+    return true;
+  }
+  if (!args.empty())
+  {
+    fail_msg_writer() << tr("usage: ") << tr(USAGE_MVM_CONTRACTS);
+    return true;
+  }
+
+  std::vector<tools::wallet2::mvm_contract_entry> contracts;
+  m_wallet->get_mvm_contract_history(contracts);
+
+  message_writer(epee::log_space::console_color_magenta, false) << tr("━━━ Smart Contract Activity ━━━");
+  message_writer(epee::log_space::console_color_default, false)
+    << (boost::format("%-14s %-12s %-19s %-20s") % "ACTION" % "SYMBOL" % "BLOCK_HEIGHT" % "TOKEN_NAME");
+  message_writer(epee::log_space::console_color_default, false)
+    << (boost::format("%-14s %-12s %-19s %-20s") % "--------------" % "------------" % "-------------------" % "--------------------");
+
+  if (contracts.empty())
+  {
+    message_writer(epee::log_space::console_color_yellow, false)
+      << tr("No smart-contract activity found in this wallet history.");
+    return true;
+  }
+
+  for (const auto &entry : contracts)
+  {
+    message_writer(epee::log_space::console_color_green, false)
+      << (boost::format("%-14s %-12s %-19llu %-20s") % entry.action % entry.token_symbol % entry.block_height % entry.token_name);
+    message_writer(epee::log_space::console_color_default, false)
+      << (boost::format("    contract_id: %s") % entry.contract_id);
+    message_writer(epee::log_space::console_color_default, false)
+      << (boost::format("    code_hash  : %s") % entry.code_hash);
+    message_writer(epee::log_space::console_color_default, false)
+      << (boost::format("    txid       : %s") % epee::string_tools::pod_to_hex(entry.txid));
+  }
+
   return true;
 }
 
@@ -4177,6 +4277,14 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_transfer_token, _1),
                            tr(USAGE_MVM_TRANSFER_TOKEN),
                            tr("Transfer token balance between token addresses with block-height-indexed metadata."));
+  m_cmd_binder.set_handler("mvm_tokens",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_tokens, _1),
+                           tr(USAGE_MVM_TOKENS),
+                           tr("Show a styled token portfolio summary (balance/received/sent) for a token address."));
+  m_cmd_binder.set_handler("mvm_contracts",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_contracts, _1),
+                           tr(USAGE_MVM_CONTRACTS),
+                           tr("Show smart-contract activity discovered in this wallet's transaction history."));
   m_cmd_binder.set_handler("fee",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_fee_info, _1),
                            tr("Print the information about the current fee and transaction backlog."));
@@ -6617,6 +6725,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
   success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(m_current_subaddress_account, false)) << ", "
     << tr("unlocked balance: ") << print_money(unlocked_balance) << unlock_time_message << extra;
+  print_mvm_token_balances_for_address(m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}), tr("Token balances (primary address)"), false);
   std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, false);
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, false);
   if (!detailed || balance_per_subaddress.empty())
@@ -10247,12 +10356,14 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
 
   auto print_address_sub = [this, &transfers](uint32_t index)
   {
+    const std::string address = m_wallet->get_subaddress_as_str({m_current_subaddress_account, index});
     bool used = std::find_if(
       transfers.begin(), transfers.end(),
       [this, &index](const tools::wallet2::transfer_details& td) {
         return td.m_subaddr_index == cryptonote::subaddress_index{ m_current_subaddress_account, index };
       }) != transfers.end();
-    success_msg_writer() << index << "  " << m_wallet->get_subaddress_as_str({m_current_subaddress_account, index}) << "  " << (index == 0 ? tr("Primary address") : m_wallet->get_subaddress_label({m_current_subaddress_account, index})) << " " << (used ? tr("(used)") : "");
+    success_msg_writer() << index << "  " << address << "  " << (index == 0 ? tr("Primary address") : m_wallet->get_subaddress_label({m_current_subaddress_account, index})) << " " << (used ? tr("(used)") : "");
+    print_mvm_token_balances_for_address(address, tr("    Token balances"), false);
   };
 
   uint32_t index = 0;

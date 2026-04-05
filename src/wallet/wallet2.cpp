@@ -12407,6 +12407,98 @@ bool wallet2::make_mvm_token_transfer_extra(const std::string &contract_id, cons
   return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::get_mvm_contract_history(std::vector<mvm_contract_entry> &contracts) const
+{
+  contracts.clear();
+  contracts.reserve(m_confirmed_txs.size());
+
+  for (const auto &entry : m_confirmed_txs)
+  {
+    cryptonote::tx_extra_mvm_contract mvm_contract{};
+    if (!cryptonote::get_mvm_contract_from_tx_extra(entry.second.m_tx.extra, mvm_contract))
+      continue;
+
+    contracts.push_back(mvm_contract_entry{
+      mvm_contract.action,
+      mvm_contract.contract_id,
+      mvm_contract.code_hash,
+      mvm_contract.token_symbol,
+      mvm_contract.token_name,
+      mvm_contract.token_supply,
+      mvm_contract.token_decimals,
+      entry.first,
+      entry.second.m_block_height,
+      entry.second.m_timestamp
+    });
+  }
+
+  std::sort(contracts.begin(), contracts.end(), [](const mvm_contract_entry &lhs, const mvm_contract_entry &rhs) {
+    if (lhs.block_height != rhs.block_height)
+      return lhs.block_height < rhs.block_height;
+    return lhs.txid < rhs.txid;
+  });
+}
+//----------------------------------------------------------------------------------------------------
+void wallet2::get_mvm_token_balances(const std::string &token_address, std::vector<mvm_token_balance_entry> &balances) const
+{
+  balances.clear();
+  if (token_address.empty())
+    return;
+
+  struct aggregate
+  {
+    uint64_t received = 0;
+    uint64_t sent = 0;
+  };
+
+  std::map<std::string, aggregate> aggregates;
+  std::map<std::string, std::tuple<std::string, std::string, std::string>> metadata;
+
+  for (const auto &entry : m_confirmed_txs)
+  {
+    cryptonote::tx_extra_mvm_contract mvm_contract{};
+    if (!cryptonote::get_mvm_contract_from_tx_extra(entry.second.m_tx.extra, mvm_contract))
+      continue;
+    if (mvm_contract.action != "transfer_token")
+      continue;
+
+    const std::string key = mvm_contract.contract_id + "|" + mvm_contract.code_hash + "|" + mvm_contract.token_symbol;
+    metadata[key] = std::make_tuple(mvm_contract.contract_id, mvm_contract.code_hash, mvm_contract.token_symbol);
+
+    if (mvm_contract.token_to == token_address)
+      aggregates[key].received += mvm_contract.token_amount;
+    if (mvm_contract.token_from == token_address)
+      aggregates[key].sent += mvm_contract.token_amount;
+  }
+
+  balances.reserve(aggregates.size());
+  for (const auto &entry : aggregates)
+  {
+    const auto meta_it = metadata.find(entry.first);
+    if (meta_it == metadata.end())
+      continue;
+    const uint64_t received = entry.second.received;
+    const uint64_t sent = entry.second.sent;
+    balances.push_back(mvm_token_balance_entry{
+      std::get<0>(meta_it->second),
+      std::get<1>(meta_it->second),
+      std::get<2>(meta_it->second),
+      token_address,
+      received,
+      sent,
+      received >= sent ? received - sent : 0
+    });
+  }
+
+  std::sort(balances.begin(), balances.end(), [](const mvm_token_balance_entry &lhs, const mvm_token_balance_entry &rhs) {
+    if (lhs.symbol != rhs.symbol)
+      return lhs.symbol < rhs.symbol;
+    if (lhs.contract_id != rhs.contract_id)
+      return lhs.contract_id < rhs.contract_id;
+    return lhs.code_hash < rhs.code_hash;
+  });
+}
+//----------------------------------------------------------------------------------------------------
 const wallet2::transfer_details &wallet2::get_transfer_details(size_t idx) const
 {
   THROW_WALLET_EXCEPTION_IF(idx >= m_transfers.size(), error::wallet_internal_error, "Bad transfer index");

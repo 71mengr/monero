@@ -314,6 +314,8 @@ namespace nodetool
         case nodetool::COMMAND_HANDSHAKE_T<cryptonote::CORE_SYNC_DATA>::ID:
         case nodetool::COMMAND_TIMED_SYNC_T<cryptonote::CORE_SYNC_DATA>::ID:
         case cryptonote::NOTIFY_NEW_TRANSACTIONS::ID:
+        case nodetool::COMMAND_NOTIFY_NEW_TOKEN::ID:
+        case nodetool::COMMAND_NOTIFY_NEW_SMART_CONTRACT::ID:
             return false;
         default:
             break;

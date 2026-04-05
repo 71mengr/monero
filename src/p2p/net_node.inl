@@ -142,7 +142,11 @@ namespace nodetool
       m_peerlist_storage = std::move(*storage);
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
-    public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS;
+    public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_BASE;
+    if (m_network_id == config::NETWORK_ID)
+      public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_MAINNET;
+    else if (m_network_id == config::testnet::NETWORK_ID)
+      public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_TESTNET;
     public_zone.m_config.m_peer_id = crypto::rand<uint64_t>();
     m_first_connection_maker_call = true;
 
@@ -2731,6 +2735,60 @@ namespace nodetool
     LOG_DEBUG_CC(context, "COMMAND_PING");
     rsp.status = PING_OK_RESPONSE_STATUS_TEXT;
     rsp.peer_id = m_network_zones.at(context.m_remote_address.get_zone()).m_config.m_peer_id;
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_new_token(int command, COMMAND_NOTIFY_NEW_TOKEN::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_TOKENS) == 0)
+      return 1;
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_NEW_TOKEN id=" << arg.token.token_id << " owner=" << arg.token.owner);
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_TOKENS))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_NEW_TOKEN::ID, std::move(out), std::move(connections));
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_new_smart_contract(int command, COMMAND_NOTIFY_NEW_SMART_CONTRACT::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SMART_CONTRACTS) == 0)
+      return 1;
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_NEW_SMART_CONTRACT id=" << arg.smart_contract.contract_id << " creator=" << arg.smart_contract.creator);
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SMART_CONTRACTS))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_NEW_SMART_CONTRACT::ID, std::move(out), std::move(connections));
+
     return 1;
   }
   //-----------------------------------------------------------------------------------

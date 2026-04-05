@@ -42,6 +42,7 @@
 #include "time_helper.h"
 #include "serialization/serialization.h"
 #include "cryptonote_config.h"
+#include "cryptonote_basic/blobdatatype.h"
 
 namespace nodetool
 {
@@ -331,5 +332,73 @@ namespace nodetool
       END_KV_SERIALIZE_MAP()    
     };
     typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  /************************************************************************/
+  /* Token propagation                                                    */
+  /************************************************************************/
+  struct token_entry
+  {
+    std::string token_id;
+    std::string owner;
+    uint64_t amount;
+    std::string metadata;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(token_id)
+      KV_SERIALIZE(owner)
+      KV_SERIALIZE(amount)
+      KV_SERIALIZE_OPT(metadata, std::string())
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_NEW_TOKEN
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 8;
+
+    struct request_t
+    {
+      token_entry token;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(token)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  /************************************************************************/
+  /* Smart contract propagation                                           */
+  /************************************************************************/
+  struct smart_contract_entry
+  {
+    std::string contract_id;
+    std::string creator;
+    cryptonote::blobdata code;
+    uint64_t gas_limit;
+    uint64_t gas_price;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(contract_id)
+      KV_SERIALIZE(creator)
+      KV_SERIALIZE(code)
+      KV_SERIALIZE(gas_limit)
+      KV_SERIALIZE(gas_price)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_NEW_SMART_CONTRACT
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 9;
+
+    struct request_t
+    {
+      smart_contract_entry smart_contract;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(smart_contract)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
   };
 }

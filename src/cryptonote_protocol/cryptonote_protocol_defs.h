@@ -224,6 +224,21 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  struct p2p_masternode_heartbeat
+  {
+    std::string validator_id;
+    uint64_t epoch = 0;
+    uint64_t timestamp = 0;
+    std::string signature;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(validator_id)
+      KV_SERIALIZE(epoch)
+      KV_SERIALIZE(timestamp)
+      KV_SERIALIZE(signature)
+    END_KV_SERIALIZE_MAP()
+  };
+
 
   /************************************************************************/
   /*                                                                      */
@@ -436,6 +451,21 @@ namespace cryptonote
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(hashes)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  struct NOTIFY_MASTERNODE_HEARTBEAT
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 11;
+
+    struct request_t
+    {
+      p2p_masternode_heartbeat heartbeat;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(heartbeat)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

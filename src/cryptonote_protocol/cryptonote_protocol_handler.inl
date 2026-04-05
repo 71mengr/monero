@@ -45,6 +45,7 @@
 #include "common/pruning.h"
 #include "common/util.h"
 #include "misc_log_ex.h"
+#include "cryptonote_core/bonded_validator_rules.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.cn"
@@ -883,6 +884,129 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::remember_masternode_heartbeat(const p2p_masternode_heartbeat& heartbeat)
+  {
+    std::string key;
+    key.reserve(heartbeat.validator_id.size() + heartbeat.signature.size() + 32);
+    key.append(heartbeat.validator_id);
+    key.push_back('|');
+    key.append(std::to_string(heartbeat.epoch));
+    key.push_back('|');
+    key.append(std::to_string(heartbeat.timestamp));
+    key.push_back('|');
+    key.append(heartbeat.signature);
+
+    CRITICAL_REGION_LOCAL(m_seen_masternode_heartbeats_lock);
+    constexpr size_t max_seen_heartbeats = 4096;
+    if (m_seen_masternode_heartbeats.size() > max_seen_heartbeats)
+      m_seen_masternode_heartbeats.clear();
+    return m_seen_masternode_heartbeats.insert(std::move(key)).second;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::relay_masternode_heartbeat(const p2p_masternode_heartbeat& heartbeat, const boost::uuids::uuid* exclude_connection_id)
+  {
+    NOTIFY_MASTERNODE_HEARTBEAT::request notify{};
+    notify.heartbeat = heartbeat;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> relay_connections;
+    m_p2p->for_each_connection([exclude_connection_id, &relay_connections](connection_context& peer_context, nodetool::peerid_type peer_id, uint32_t /*support_flags*/)
+    {
+      if (!peer_id)
+        return true;
+
+      if (exclude_connection_id != nullptr && *exclude_connection_id == peer_context.m_connection_id)
+        return true;
+
+      relay_connections.push_back({peer_context.m_remote_address.get_zone(), peer_context.m_connection_id});
+      return true;
+    });
+
+    if (relay_connections.empty())
+      return true;
+
+    epee::levin::message_writer blob{4 * 1024};
+    epee::serialization::store_t_to_binary(notify, blob.buffer);
+    m_p2p->relay_notify_to_list(NOTIFY_MASTERNODE_HEARTBEAT::ID, std::move(blob), std::move(relay_connections));
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::relay_local_masternode_heartbeats()
+  {
+    if (!is_synchronized())
+      return true;
+
+    const uint64_t current_height = m_core.get_current_blockchain_height();
+    if (current_height == 0)
+      return true;
+
+    const std::vector<p2p_masternode_info> masternodes = m_core.get_blockchain_storage().get_p2p_masternodes(false);
+    if (masternodes.empty())
+      return true;
+
+    const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    size_t relayed = 0;
+    for (const auto& masternode : masternodes)
+    {
+      if (!masternode.active || masternode.deregistered)
+        continue;
+
+      p2p_masternode_heartbeat heartbeat{};
+      heartbeat.validator_id = masternode.id;
+      heartbeat.epoch = current_height;
+      heartbeat.timestamp = now;
+      heartbeat.signature = "p2p-heartbeat:" + std::to_string(current_height) + ":" + masternode.id;
+
+      if (!remember_masternode_heartbeat(heartbeat))
+        continue;
+
+      relay_masternode_heartbeat(heartbeat);
+      ++relayed;
+    }
+
+    if (relayed > 0)
+      MDEBUG("Relayed " << relayed << " local masternode heartbeat message(s) on daemon idle tick");
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_masternode_heartbeat(int command, NOTIFY_MASTERNODE_HEARTBEAT::request& arg, cryptonote_connection_context& context)
+  {
+    MLOG_P2P_MESSAGE("Received NOTIFY_MASTERNODE_HEARTBEAT from " << context << " for validator " << arg.heartbeat.validator_id);
+    if (command != NOTIFY_MASTERNODE_HEARTBEAT::ID)
+    {
+      MERROR("Unexpected command " << command << " in NOTIFY_MASTERNODE_HEARTBEAT handler");
+      return 1;
+    }
+
+    cryptonote::heartbeat_proof proof{};
+    proof.validator_id = arg.heartbeat.validator_id;
+    proof.epoch = arg.heartbeat.epoch;
+    proof.timestamp = arg.heartbeat.timestamp;
+    proof.signature = arg.heartbeat.signature;
+
+    std::string reason;
+    if (!proof.is_well_formed(&reason))
+    {
+      MERROR("Dropping malformed masternode heartbeat: " << reason);
+      hit_score(context, 1);
+      return 1;
+    }
+
+    if (!remember_masternode_heartbeat(arg.heartbeat))
+    {
+      LOG_DEBUG_CC(context, "Duplicate masternode heartbeat ignored");
+      return 1;
+    }
+
+    relay_masternode_heartbeat(arg.heartbeat, &context.m_connection_id);
+
+    return 1;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_NEW_TRANSACTIONS (" << arg.txs.size() << " txes)");
@@ -1688,6 +1812,7 @@ skip:
     m_idle_peer_kicker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::kick_idle_peers, this));
     m_standby_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::check_standby_peers, this));
     m_sync_search_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::update_sync_search, this));
+    m_masternode_heartbeat_relay_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::relay_local_masternode_heartbeats, this));
     return m_core.on_idle();
   }
   //------------------------------------------------------------------------------------------------------------------------
@@ -2464,6 +2589,8 @@ skip:
         return false;
       });
     }
+
+    relay_local_masternode_heartbeats();
 
     return true;
   }

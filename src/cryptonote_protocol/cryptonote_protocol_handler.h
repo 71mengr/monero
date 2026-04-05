@@ -36,6 +36,7 @@
 
 #include <boost/program_options/variables_map.hpp>
 #include <string>
+#include <unordered_set>
 
 #include "byte_slice.h"
 #include "math_helper.h"
@@ -95,6 +96,7 @@ namespace cryptonote
       HANDLE_NOTIFY_T2(NOTIFY_NEW_FLUFFY_BLOCK, &cryptonote_protocol_handler::handle_notify_new_fluffy_block)			
       HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, &cryptonote_protocol_handler::handle_request_fluffy_missing_tx)						
       HANDLE_NOTIFY_T2(NOTIFY_GET_TXPOOL_COMPLEMENT, &cryptonote_protocol_handler::handle_notify_get_txpool_complement)
+      HANDLE_NOTIFY_T2(NOTIFY_MASTERNODE_HEARTBEAT, &cryptonote_protocol_handler::handle_notify_masternode_heartbeat)
     END_INVOKE_MAP2()
 
     bool on_idle();
@@ -143,7 +145,10 @@ namespace cryptonote
     int handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context);
     int handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context);
     int handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_connection_context& context);
-		
+    int handle_notify_masternode_heartbeat(int command, NOTIFY_MASTERNODE_HEARTBEAT::request& arg, cryptonote_connection_context& context);
+    bool remember_masternode_heartbeat(const p2p_masternode_heartbeat& heartbeat);
+    bool relay_masternode_heartbeat(const p2p_masternode_heartbeat& heartbeat, const boost::uuids::uuid* exclude_connection_id = nullptr);
+    bool relay_local_masternode_heartbeats();
     //----------------- i_bc_protocol_layout ---------------------------------------
     virtual bool relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context);
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
@@ -182,7 +187,10 @@ namespace cryptonote
     epee::math_helper::once_a_time_seconds<8> m_idle_peer_kicker;
     epee::math_helper::once_a_time_milliseconds<100> m_standby_checker;
     epee::math_helper::once_a_time_seconds<101> m_sync_search_checker;
+    epee::math_helper::once_a_time_seconds<60> m_masternode_heartbeat_relay_checker;
     epee::math_helper::once_a_time_seconds<43> m_bad_peer_checker;
+    std::unordered_set<std::string> m_seen_masternode_heartbeats;
+    mutable epee::critical_section m_seen_masternode_heartbeats_lock;
     std::unordered_map<epee::net_utils::zone, unsigned int> m_max_out_peers;
     mutable epee::critical_section m_max_out_peers_lock;
     tools::PerformanceTimer m_sync_timer, m_add_timer;

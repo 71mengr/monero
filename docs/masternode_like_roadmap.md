@@ -25,6 +25,8 @@ Concretely, bonded validators should:
   optional routing services).
 - Participate in deterministic, chain-derived security workflows that make deep
   transaction-history rewrites substantially harder to execute unnoticed.
+- Communicate with each other through authenticated P2P protocol messages (not
+  ad-hoc RPC polling) for validator coordination duties.
 - Receive deterministic protocol rewards when they meet performance criteria.
 - Be penalized and/or de-registered for non-performance or provable misconduct.
 
@@ -47,9 +49,11 @@ Concretely, bonded validators should:
    - Deregistration proof format.
    - Unlock delay and slashing (if enabled).
 
-5. **P2P service proofs**
+5. **P2P service proofs and inter-validator messaging**
    - Signed uptime heartbeats.
    - Optional challenge/response proofs for relay quality.
+   - Explicit P2P command set for validator-to-validator coordination and
+     authenticated gossip of duty results.
 
 ## Non-consensus components
 

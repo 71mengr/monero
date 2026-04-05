@@ -231,6 +231,7 @@ namespace cryptonote
     bool masternode_register(const std::vector<std::string> &args);
     bool mvm_create_contract(const std::vector<std::string> &args);
     bool mvm_create_token(const std::vector<std::string> &args);
+    bool mvm_mint_token(const std::vector<std::string> &args);
     bool mvm_transfer_token(const std::vector<std::string> &args);
     bool mvm_tokens(const std::vector<std::string> &args);
     bool mvm_contracts(const std::vector<std::string> &args);

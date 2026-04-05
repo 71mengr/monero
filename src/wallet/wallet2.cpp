@@ -12393,6 +12393,19 @@ bool wallet2::make_mvm_token_create_extra(const std::string &contract_id, const 
   return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::make_mvm_token_mint_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const
+{
+  extra.clear();
+  cryptonote::tx_extra_mvm_contract contract{};
+  contract.action = "mint_token";
+  contract.contract_id = contract_id;
+  contract.code_hash = code_hash;
+  contract.token_symbol = symbol;
+  contract.token_to = to;
+  contract.token_amount = amount;
+  return cryptonote::add_mvm_contract_to_tx_extra(extra, contract);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::make_mvm_token_transfer_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &from, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const
 {
   extra.clear();

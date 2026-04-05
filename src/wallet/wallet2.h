@@ -1227,6 +1227,7 @@ private:
     std::vector<wallet2::pending_tx> create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, uint32_t priority, const std::vector<uint8_t>& extra);
     bool make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
+    bool make_mvm_token_mint_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_transfer_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &from, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const;
     void get_mvm_contract_history(std::vector<mvm_contract_entry> &contracts) const;
     void get_mvm_token_balances(const std::string &token_address, std::vector<mvm_token_balance_entry> &balances) const;

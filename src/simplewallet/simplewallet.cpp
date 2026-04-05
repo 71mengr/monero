@@ -207,6 +207,7 @@ namespace
   const char* USAGE_MASTERNODE_REGISTER("masternode_register <collateral_amount> <address> <amount>");
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<address> <amount>]");
   const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount>");
+  const char* USAGE_MVM_MINT_TOKEN("mvm_mint_token <contract_id> <code_hash> <symbol> <to_token_address> <token_amount> <address> <amount>");
   const char* USAGE_MVM_TRANSFER_TOKEN("mvm_transfer_token <contract_id> <code_hash> <symbol> <from_token_address> <to_token_address> <token_amount> <address> <amount>");
   const char* USAGE_MVM_TOKENS("mvm_tokens [<token_address>]");
   const char* USAGE_MVM_CONTRACTS("mvm_contracts");
@@ -1486,6 +1487,89 @@ bool simple_wallet::mvm_transfer_token(const std::vector<std::string> &args)
   }
 
   success_msg_writer() << tr("MVM token transfer transaction submitted.");
+  return true;
+}
+
+bool simple_wallet::mvm_mint_token(const std::vector<std::string> &args)
+{
+  CHECK_IF_BACKGROUND_SYNCING("cannot mint an MVM token");
+  if (!try_connect_to_daemon())
+    return false;
+  if (!tools::is_mvm_mainnet_enabled(m_wallet->nettype()))
+  {
+    fail_msg_writer() << tr("MVM token mint is mainnet-enabled only.");
+    return true;
+  }
+
+  if (args.size() != 7)
+  {
+    fail_msg_writer() << tr("usage: ") << tr(USAGE_MVM_MINT_TOKEN);
+    return true;
+  }
+
+  uint64_t token_amount = 0;
+  if (!epee::string_tools::get_xtype_from_string(token_amount, args[4]) || token_amount == 0)
+  {
+    fail_msg_writer() << tr("invalid token amount");
+    return true;
+  }
+  if (token_amount > tools::MVM_TOKEN_AMOUNT_MAX)
+  {
+    fail_msg_writer() << tr("token amount exceeds allowed maximum");
+    return true;
+  }
+
+  cryptonote::address_parse_info info;
+  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[5], oa_prompter))
+  {
+    fail_msg_writer() << tr("failed to parse address");
+    return true;
+  }
+
+  uint64_t amount = 0;
+  if (!cryptonote::parse_amount(amount, args[6]) || amount == 0)
+  {
+    fail_msg_writer() << tr("amount is wrong: ") << args[6];
+    return true;
+  }
+
+  std::vector<uint8_t> extra;
+  if (!m_wallet->make_mvm_token_mint_extra(args[0], args[1], args[2], args[3], token_amount, extra))
+  {
+    fail_msg_writer() << tr("failed to build MVM mint token tx extra");
+    return true;
+  }
+
+  std::vector<cryptonote::tx_destination_entry> dsts(1);
+  dsts[0].amount = amount;
+  dsts[0].addr = info.address;
+  dsts[0].is_subaddress = info.is_subaddress;
+  dsts[0].is_integrated = info.has_payment_id;
+
+  const uint32_t priority = m_wallet->adjust_priority(m_wallet->get_default_priority());
+  const size_t min_ring_size = m_wallet->get_min_ring_size();
+  const uint64_t fake_outs_count = m_wallet->adjust_mixin(min_ring_size - 1);
+  tools::wallet2::unique_index_container subtract_fee_from_outputs;
+
+  SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
+  try
+  {
+    auto ptx_vector = m_wallet->create_transactions_2(
+      dsts, fake_outs_count, priority, extra, m_current_subaddress_account, {}, subtract_fee_from_outputs);
+    if (ptx_vector.empty())
+    {
+      fail_msg_writer() << tr("No outputs found, or daemon is not ready");
+      return true;
+    }
+    commit_or_save(ptx_vector, false);
+  }
+  catch (const std::exception &)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+    return true;
+  }
+
+  success_msg_writer() << tr("MVM token mint transaction submitted.");
   return true;
 }
 
@@ -4273,6 +4357,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_create_token, _1),
                            tr(USAGE_MVM_CREATE_TOKEN),
                            tr("Create an MVM token contract from bytecode (e.g. USDT-like metadata with supply/decimals)."));
+  m_cmd_binder.set_handler("mvm_mint_token",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_mint_token, _1),
+                           tr(USAGE_MVM_MINT_TOKEN),
+                           tr("Mint additional token supply to a token address for an existing MVM token contract."));
   m_cmd_binder.set_handler("mvm_transfer_token",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_transfer_token, _1),
                            tr(USAGE_MVM_TRANSFER_TOKEN),

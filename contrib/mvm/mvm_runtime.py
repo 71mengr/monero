@@ -61,16 +61,34 @@ class MVMState:
 
 
 class MVM:
-    def __init__(self, program: List[Dict[str, Any]], context: Dict[str, int] | None = None) -> None:
+    def __init__(
+        self, program: List[Dict[str, Any]], context: Dict[str, int] | None = None, max_steps: int = 100_000
+    ) -> None:
         self.program = program
         self.state = MVMState(memory=dict(context or {}))
+        self.max_steps = max_steps
 
     def run(self) -> MVMState:
+        self._validate_program()
+        steps = 0
         while not self.state.halted and self.state.pc < len(self.program):
+            steps += 1
+            if steps > self.max_steps:
+                raise MVMError(f"execution exceeded max_steps={self.max_steps}")
             instruction = self.program[self.state.pc]
             self._exec(instruction)
             self.state.pc += 1
         return self.state
+
+    def _validate_program(self) -> None:
+        if not isinstance(self.program, list):
+            raise MVMError("program must be a list")
+        for i, ins in enumerate(self.program):
+            if not isinstance(ins, dict):
+                raise MVMError(f"instruction at pc={i} must be an object")
+            op = ins.get("op")
+            if op not in OPCODE_TO_NAME.values():
+                raise MVMError(f"instruction at pc={i} has invalid op '{op}'")
 
     def _exec(self, ins: Dict[str, Any]) -> None:
         op = ins.get("op")
@@ -327,6 +345,7 @@ def main() -> int:
     parser.add_argument("--bytecode", default="", help="Path to bytecode hex file produced by mvmlc")
     parser.add_argument("--bytecode-hex", default="", help="Raw bytecode hex string")
     parser.add_argument("--context", default="", help="Optional context JSON file")
+    parser.add_argument("--max-steps", type=int, default=100000, help="Maximum instruction steps before abort")
     args = parser.parse_args()
 
     if not any([args.program, args.bytecode, args.bytecode_hex]):
@@ -356,7 +375,11 @@ def main() -> int:
         context_doc = load_json(Path(args.context))
         context = {k: int(v) for k, v in context_doc.items()}
 
-    vm = MVM(program=program, context=context)
+    if args.max_steps <= 0:
+        print("error: --max-steps must be > 0", file=sys.stderr)
+        return 1
+
+    vm = MVM(program=program, context=context, max_steps=args.max_steps)
     try:
         state = vm.run()
     except MVMError as err:

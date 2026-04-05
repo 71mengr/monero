@@ -63,11 +63,18 @@ def _validate_contract(source: Dict[str, Any]) -> None:
 
     if not isinstance(source["parties"], list) or len(source["parties"]) < 2:
         raise ValueError("'parties' must be a list with at least 2 participants")
+    aliases = [str(p.get("alias", "")).strip() for p in source["parties"] if isinstance(p, dict)]
+    if len(aliases) != len(source["parties"]) or any(not alias for alias in aliases):
+        raise ValueError("each party must be an object with a non-empty 'alias'")
+    if len(set(aliases)) != len(aliases):
+        raise ValueError("party aliases must be unique")
 
     if not isinstance(source["actions"], list) or len(source["actions"]) == 0:
         raise ValueError("'actions' must be a non-empty list")
 
     for idx, action in enumerate(source["actions"]):
+        if not isinstance(action, dict):
+            raise ValueError(f"actions[{idx}] must be an object")
         if "type" not in action:
             raise ValueError(f"actions[{idx}] missing 'type'")
         if action["type"] not in ALLOWED_ACTIONS:
@@ -77,10 +84,25 @@ def _validate_contract(source: Dict[str, Any]) -> None:
             )
 
 
-def build_contract_package(source: Dict[str, Any], rpc_meta: Dict[str, Any] | None) -> Dict[str, Any]:
+def _build_hashable_package(package: Dict[str, Any]) -> Dict[str, Any]:
+    # Keep package hashes reproducible: operational timestamps are metadata and
+    # intentionally excluded from the canonical package digest.
+    return {
+        "schema": package["schema"],
+        "contract_id": package["contract_id"],
+        "contract": package["contract"],
+        "terms_hash": package["terms_hash"],
+        "network_binding": package["network_binding"],
+        "execution_notes": package["execution_notes"],
+    }
+
+
+def build_contract_package(
+    source: Dict[str, Any], rpc_meta: Dict[str, Any] | None, created_at: str | None = None
+) -> Dict[str, Any]:
     _validate_contract(source)
 
-    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    now = created_at or dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     source_canonical = _canonical_json(source)
     terms_hash = _sha3_hex(source_canonical)
 
@@ -113,7 +135,7 @@ def build_contract_package(source: Dict[str, Any], rpc_meta: Dict[str, Any] | No
         },
     }
 
-    package["package_hash"] = _sha3_hex(_canonical_json(package))
+    package["package_hash"] = _sha3_hex(_canonical_json(_build_hashable_package(package)))
     return package
 
 
@@ -122,6 +144,11 @@ def main() -> int:
     parser.add_argument("--input", required=True, help="Path to source contract JSON")
     parser.add_argument("--output", required=True, help="Path to output package JSON")
     parser.add_argument("--rpc-url", default="", help="Optional monerod RPC URL for network binding")
+    parser.add_argument(
+        "--created-at",
+        default="",
+        help="Optional RFC3339 timestamp override used for metadata only",
+    )
     args = parser.parse_args()
 
     src_path = Path(args.input)
@@ -134,7 +161,8 @@ def main() -> int:
     try:
         source = json.loads(src_path.read_text(encoding="utf-8"))
         rpc_meta = _fetch_web3_network(args.rpc_url) if args.rpc_url else None
-        package = build_contract_package(source, rpc_meta)
+        created_at = args.created_at.strip() or None
+        package = build_contract_package(source, rpc_meta, created_at=created_at)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(package, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - CLI tool surfaces all errors

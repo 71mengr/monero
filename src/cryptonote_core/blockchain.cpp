@@ -63,6 +63,7 @@
 #include "common/varint.h"
 #include "common/pruning.h"
 #include "common/mvm.h"
+#include "bonded_validator_rules.h"
 #include "common/data_cache.h"
 #include "time_helper.h"
 #include "serialization/binary_utils.h"
@@ -99,6 +100,12 @@ namespace
 constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
 constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = (30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;
 constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "monero-masternode-registration-v2";
+constexpr uint32_t MASTERNODE_DUTY_MISSED_THRESHOLD = 10;
+constexpr uint32_t MASTERNODE_DEREGISTER_PENALTY_POINTS = 25;
+constexpr size_t MASTERNODE_ACTIVE_SET_SIZE = 64;
+constexpr uint64_t MASTERNODE_ACTIVE_SET_MIN_COLLATERAL = MASTERNODE_COLLATERAL_EXACT_AMOUNT;
+constexpr uint64_t MASTERNODE_MIN_REMAINING_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS / 2;
+constexpr uint64_t MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
 
 std::string make_masternode_collateral_outpoint_key(const cryptonote::masternode_collateral_outpoint& collateral_outpoint)
 {
@@ -303,6 +310,24 @@ bool get_mvm_contract_from_tx(
   }
 
   return true;
+}
+
+bool get_masternode_attestation_id_from_miner_tx_extra(const cryptonote::transaction& miner_tx, std::string& validator_id)
+{
+  validator_id.clear();
+  std::vector<cryptonote::tx_extra_field> tx_extra_fields;
+  if (!cryptonote::parse_tx_extra(miner_tx.extra, tx_extra_fields))
+    return false;
+
+  cryptonote::tx_extra_nonce extra_nonce;
+  if (!cryptonote::find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
+    return false;
+
+  if (extra_nonce.nonce.rfind("mnid:", 0) != 0)
+    return false;
+
+  validator_id = extra_nonce.nonce.substr(5);
+  return !validator_id.empty();
 }
 
 cryptonote::blobdata serialize_mvm_contract_blob(
@@ -1092,6 +1117,12 @@ void Blockchain::apply_masternode_registrations_from_block(
     info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
     info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
     info.collateral_amount = registration_payload.collateral_amount;
+    transaction collateral_tx{};
+    if (m_db->get_tx(registration_payload.collateral_outpoint.txid, collateral_tx) &&
+        collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
+    {
+      info.lock_end_height = collateral_tx.unlock_time;
+    }
     if (!transition_undo.had_previous_state)
       info.registration_height = height;
     info.active = true;
@@ -1117,6 +1148,92 @@ void Blockchain::apply_masternode_registrations_from_block(
 
   if (!block_undo.transitions.empty())
     m_masternode_undo_journal.push_back(std::move(block_undo));
+}
+//------------------------------------------------------------------
+void Blockchain::apply_masternode_security_workflow_for_block(
+    const cryptonote::block& bl,
+    const uint64_t height,
+    const uint64_t timestamp)
+{
+  std::vector<bonded_validator_info> validators;
+  validators.reserve(m_masternode_db.size());
+  for (const auto& kv : m_masternode_db)
+    validators.push_back(kv.second);
+
+  const crypto::hash randomness = crypto::cn_fast_hash(&bl.prev_id, sizeof(bl.prev_id));
+  const auto active_set = select_active_validator_set(
+      validators,
+      height,
+      height,
+      MASTERNODE_ACTIVE_SET_SIZE,
+      randomness,
+      MASTERNODE_ACTIVE_SET_MIN_COLLATERAL,
+      MASTERNODE_MIN_REMAINING_LOCK_BLOCKS,
+      MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS,
+      MASTERNODE_DUTY_MISSED_THRESHOLD);
+
+  if (active_set.empty())
+    return;
+
+  const bonded_validator_info& expected = active_set[height % active_set.size()];
+  const auto current_it = m_masternode_db.find(expected.id);
+  if (current_it == m_masternode_db.end())
+    return;
+
+  std::string attested_validator_id;
+  const bool has_attestation = get_masternode_attestation_id_from_miner_tx_extra(bl.miner_tx, attested_validator_id);
+  const bool duty_met = has_attestation && attested_validator_id == expected.id;
+
+  masternode_block_undo block_undo{};
+  block_undo.height = height;
+
+  masternode_transition_undo transition_undo{};
+  transition_undo.id = expected.id;
+  transition_undo.had_previous_state = true;
+  transition_undo.previous_state = current_it->second;
+
+  bonded_validator_info updated = current_it->second;
+  updated.updated_height = height;
+  updated.updated_timestamp = timestamp;
+
+  if (duty_met)
+  {
+    updated.online = true;
+    updated.last_uptime_proof_height = height;
+    if (updated.penalty_points > 0)
+      --updated.penalty_points;
+  }
+  else
+  {
+    updated.online = false;
+    if (updated.missed_duties < std::numeric_limits<uint32_t>::max())
+      ++updated.missed_duties;
+    if (updated.penalty_points < std::numeric_limits<uint32_t>::max())
+      ++updated.penalty_points;
+    if (updated.penalty_points >= MASTERNODE_DEREGISTER_PENALTY_POINTS)
+    {
+      updated.deregistered = true;
+      updated.active = false;
+    }
+  }
+
+  if (updated.deregistered || !updated.active)
+  {
+    if (!updated.operator_key.empty())
+      m_masternode_by_operator_key.erase(updated.operator_key);
+    if (!updated.collateral_txid.empty())
+      m_masternode_by_collateral_outpoint.erase(updated.collateral_txid);
+  }
+
+  m_masternode_db[expected.id] = std::move(updated);
+  cryptonote::blobdata blob;
+  if (serialize_masternode_blob(m_masternode_db[expected.id], blob))
+    m_db->set_masternode_blob(expected.id, blob);
+  else
+    MWARNING("Failed to serialize masternode security workflow update for id " << expected.id);
+
+  block_undo.transitions.push_back(std::move(transition_undo));
+  m_masternode_undo_journal.push_back(std::move(block_undo));
 }
 //------------------------------------------------------------------
 bool Blockchain::validate_mvm_contract_rules_for_block(
@@ -1269,6 +1386,12 @@ void Blockchain::rebuild_masternode_state_from_chain()
       info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
       info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
       info.collateral_amount = registration_payload.collateral_amount;
+      transaction collateral_tx{};
+      if (m_db->get_tx(registration_payload.collateral_outpoint.txid, collateral_tx) &&
+          collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
+      {
+        info.lock_end_height = collateral_tx.unlock_time;
+      }
       if (info.registration_height == 0)
         info.registration_height = height;
       info.active = true;
@@ -2054,7 +2177,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     base_reward = money_in_use - fee;
   }
 
-  if (version >= HF_VERSION_MASTERNODE_REWARD_SPLIT)
+  if (bonded_validator_reward_tier_is_enabled(m_nettype, version))
   {
     uint64_t miner_reward = 0, masternode_reward = 0;
     split_reward_for_masternode(base_reward + fee, version, miner_reward, masternode_reward);
@@ -2368,9 +2491,33 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
    block weight, so first miner transaction generated with fake amount of money, and with phase we know think we know expected block weight
    */
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
+  cryptonote::blobdata masternode_ex_nonce = ex_nonce;
+  if (masternode_ex_nonce.empty() && bonded_validator_registration_tier_is_enabled(m_nettype, b.major_version))
+  {
+    std::vector<bonded_validator_info> validators;
+    validators.reserve(m_masternode_db.size());
+    for (const auto& kv : m_masternode_db)
+      validators.push_back(kv.second);
+
+    const crypto::hash chain_randomness = crypto::cn_fast_hash(&b.prev_id, sizeof(b.prev_id));
+    const auto deterministic_set = select_active_validator_set(
+        validators,
+        height,
+        height,
+        MASTERNODE_ACTIVE_SET_SIZE,
+        chain_randomness,
+        MASTERNODE_ACTIVE_SET_MIN_COLLATERAL,
+        MASTERNODE_MIN_REMAINING_LOCK_BLOCKS,
+        MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS,
+        MASTERNODE_DUTY_MISSED_THRESHOLD);
+
+    if (!deterministic_set.empty())
+      masternode_ex_nonce = "mnid:" + deterministic_set[height % deterministic_set.size()].id;
+  }
+
   uint8_t hf_version = b.major_version;
-  size_t max_outs = hf_version >= 4 ? (hf_version >= HF_VERSION_MASTERNODE_REWARD_SPLIT ? 2 : 1) : 11;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+  size_t max_outs = hf_version >= 4 ? (bonded_validator_reward_tier_is_enabled(m_nettype, hf_version) ? 2 : 1) : 11;
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, masternode_ex_nonce, max_outs, hf_version);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -5223,7 +5370,7 @@ leave:
   uint64_t new_height = 0;
   if (!bvc.m_verifivation_failed)
   {
-    if (m_hardfork->get_current_version() >= HF_MN_REG &&
+    if (bonded_validator_registration_tier_is_enabled(m_nettype, m_hardfork->get_current_version()) &&
         !validate_masternode_registration_rules_for_block(txs, m_masternode_by_operator_key, m_masternode_by_collateral_outpoint, *m_db, m_nettype, blockchain_height))
     {
       MERROR_VER("Block with id: " << id << " failed masternode registration consensus checks");
@@ -5231,7 +5378,7 @@ leave:
       return_txs_to_pool();
       return false;
     }
-    if (m_hardfork->get_current_version() >= HF_MN_REG && !validate_mvm_contract_rules_for_block(txs))
+    if (bonded_validator_registration_tier_is_enabled(m_nettype, m_hardfork->get_current_version()) && !validate_mvm_contract_rules_for_block(txs))
     {
       MERROR_VER("Block with id: " << id << " failed MVM consensus checks");
       bvc.m_verifivation_failed = true;
@@ -5309,8 +5456,11 @@ leave:
     }
   }
 
-  if (new_hf_version >= HF_MN_REG)
+  if (bonded_validator_registration_tier_is_enabled(m_nettype, new_hf_version))
+  {
     apply_masternode_registrations_from_block(txs, new_height - 1, bl.timestamp);
+    apply_masternode_security_workflow_for_block(bl, new_height - 1, bl.timestamp);
+  }
   if (!apply_mvm_contracts_from_block(txs, new_height - 1, bl.timestamp))
   {
     MERROR("Failed to apply MVM state transitions at height " << (new_height - 1));

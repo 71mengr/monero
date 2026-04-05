@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "crypto/hash.h"
+#include "cryptonote_config.h"
 #include "serialization/keyvalue_serialization.h"
 #include "serialization/serialization.h"
 
@@ -203,4 +204,12 @@ namespace cryptonote
       const crypto::hash& proof_digest,
       const std::set<std::string>& observed_keys,
       const std::vector<std::pair<std::string, crypto::hash>>& observed_equivocations);
+
+  bool bonded_validator_reward_tier_is_enabled(
+      network_type nettype,
+      uint8_t hf_version);
+
+  bool bonded_validator_registration_tier_is_enabled(
+      network_type nettype,
+      uint8_t hf_version);
 }

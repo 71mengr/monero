@@ -39,6 +39,20 @@ namespace
 
 namespace cryptonote
 {
+  bool bonded_validator_reward_tier_is_enabled(
+      network_type nettype,
+      uint8_t hf_version)
+  {
+    return nettype == MAINNET && hf_version >= HF_VERSION_MASTERNODE_REWARD_SPLIT;
+  }
+
+  bool bonded_validator_registration_tier_is_enabled(
+      network_type nettype,
+      uint8_t hf_version)
+  {
+    return nettype == MAINNET && hf_version >= HF_MN_REG;
+  }
+
   uint64_t compute_reward_eligible_height(
       uint64_t registration_height,
       uint64_t reward_activation_delay_blocks)

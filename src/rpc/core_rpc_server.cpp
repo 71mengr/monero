@@ -49,6 +49,7 @@ using namespace epee;
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/merge_mining.h"
+#include "cryptonote_core/bonded_validator_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "misc_language.h"
 #include "net/local_ip.h"
@@ -1018,11 +1019,13 @@ namespace cryptonote
     RPC_TRACKER(get_bonded_validators);
     res.untrusted = false;
 
-    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    const bool bonded_tier_enabled = cryptonote::bonded_validator_registration_tier_is_enabled(
+        m_core.get_nettype(),
+        m_core.get_blockchain_storage().get_current_hard_fork_version());
     res.enabled = bonded_tier_enabled;
     res.reason = bonded_tier_enabled
-        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
-        : "Bonded validator tier is only enabled on mainnet";
+        ? "Bonded validator tier is enabled on mainnet at the current hard-fork version"
+        : "Bonded validator tier is disabled on this network or hard-fork version";
     res.height = m_core.get_current_blockchain_height();
     const auto validators = m_core.get_blockchain_storage().get_masternodes(req.include_inactive);
     const auto active_validators = m_core.get_blockchain_storage().get_masternodes(false);
@@ -1050,19 +1053,23 @@ namespace cryptonote
       res.validators.push_back(std::move(entry));
     }
 
-    if (!active_validators.empty())
-    {
-      std::vector<std::string> ordered_ids;
-      ordered_ids.reserve(active_validators.size());
-      for (const auto& masternode : active_validators)
-        ordered_ids.push_back(masternode.id);
-      std::sort(ordered_ids.begin(), ordered_ids.end());
-      res.next_in_line_id = ordered_ids[res.height % ordered_ids.size()];
-    }
-
     if (res.height > 0)
     {
       const cryptonote::block top_block = m_core.get_blockchain_storage().get_db().get_block_from_height(res.height - 1);
+      const crypto::hash chain_randomness = crypto::cn_fast_hash(&top_block.prev_id, sizeof(top_block.prev_id));
+      const auto deterministic_set = cryptonote::select_active_validator_set(
+          active_validators,
+          res.height - 1,
+          res.height - 1,
+          64,
+          chain_randomness,
+          1500000000000ULL,
+          ((30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2) / 2,
+          CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE,
+          10);
+      if (!deterministic_set.empty())
+        res.next_in_line_id = deterministic_set[(res.height - 1) % deterministic_set.size()].id;
+
       std::vector<cryptonote::tx_extra_field> tx_extra_fields;
       if (cryptonote::parse_tx_extra(top_block.miner_tx.extra, tx_extra_fields))
       {
@@ -1084,11 +1091,13 @@ namespace cryptonote
     RPC_TRACKER(get_bonded_validator_status);
     res.untrusted = false;
 
-    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    const bool bonded_tier_enabled = cryptonote::bonded_validator_registration_tier_is_enabled(
+        m_core.get_nettype(),
+        m_core.get_blockchain_storage().get_current_hard_fork_version());
     res.enabled = bonded_tier_enabled;
     res.reason = bonded_tier_enabled
-        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
-        : "Bonded validator tier is only enabled on mainnet";
+        ? "Bonded validator tier is enabled on mainnet at the current hard-fork version"
+        : "Bonded validator tier is disabled on this network or hard-fork version";
     cryptonote::bonded_validator_info masternode{};
     res.found = m_core.get_blockchain_storage().get_masternode(req.id, masternode);
     if (res.found)
@@ -1119,11 +1128,13 @@ namespace cryptonote
     RPC_TRACKER(get_bonded_validator_rewards);
     res.untrusted = false;
 
-    const bool bonded_tier_enabled = m_core.get_nettype() == MAINNET;
+    const bool bonded_tier_enabled = cryptonote::bonded_validator_registration_tier_is_enabled(
+        m_core.get_nettype(),
+        m_core.get_blockchain_storage().get_current_hard_fork_version());
     res.enabled = bonded_tier_enabled;
     res.reason = bonded_tier_enabled
-        ? "Bonded validator tier is enabled on mainnet with a 50% validator reward target"
-        : "Bonded validator tier is only enabled on mainnet";
+        ? "Bonded validator tier is enabled on mainnet at the current hard-fork version"
+        : "Bonded validator tier is disabled on this network or hard-fork version";
     res.id = req.id;
     res.total_amount = 0;
     res.status = CORE_RPC_STATUS_OK;

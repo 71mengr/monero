@@ -91,6 +91,17 @@ TEST(bonded_validator_rules, bonded_validator_info_encoding_round_trip)
   ASSERT_EQ(decoded.updated_timestamp, original.updated_timestamp);
 }
 
+TEST(bonded_validator_rules, mainnet_activation_gates)
+{
+  ASSERT_TRUE(cryptonote::bonded_validator_reward_tier_is_enabled(cryptonote::MAINNET, HF_VERSION_MASTERNODE_REWARD_SPLIT));
+  ASSERT_FALSE(cryptonote::bonded_validator_reward_tier_is_enabled(cryptonote::MAINNET, HF_VERSION_MASTERNODE_REWARD_SPLIT - 1));
+  ASSERT_FALSE(cryptonote::bonded_validator_reward_tier_is_enabled(cryptonote::TESTNET, HF_VERSION_MASTERNODE_REWARD_SPLIT));
+
+  ASSERT_TRUE(cryptonote::bonded_validator_registration_tier_is_enabled(cryptonote::MAINNET, HF_MN_REG));
+  ASSERT_FALSE(cryptonote::bonded_validator_registration_tier_is_enabled(cryptonote::MAINNET, HF_MN_REG - 1));
+  ASSERT_FALSE(cryptonote::bonded_validator_registration_tier_is_enabled(cryptonote::STAGENET, HF_MN_REG));
+}
+
 TEST(bonded_validator_rules, deterministic_active_set_selection)
 {
   std::vector<cryptonote::bonded_validator_info> validators{

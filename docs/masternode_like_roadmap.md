@@ -11,13 +11,22 @@ stages, with explicit safety gates.
 
 ## Target capability
 
-Introduce an optional **bonded validator tier** ("masternode-like" nodes) that:
+Introduce an optional **bonded validator tier** ("masternode-like" nodes) with a
+primary security objective of increasing the cost and operational complexity of
+coordinated 51% attacks and large-scale chain rewrite attempts.
 
-- Posts a locked collateral output.
-- Provides measurable network services (high-availability relay, block propagation,
+The tier is designed to complement PoW, not replace it, by adding deterministic
+validator-set checks and economic penalties around critical network duties.
+
+Concretely, bonded validators should:
+
+- Post a locked collateral output that can be delayed/slashed for protocol faults.
+- Provide measurable network services (high-availability relay, block propagation,
   optional routing services).
-- Receives deterministic protocol rewards.
-- Can be penalized and/or de-registered for non-performance.
+- Participate in deterministic, chain-derived security workflows that make deep
+  transaction-history rewrites substantially harder to execute unnoticed.
+- Receive deterministic protocol rewards when they meet performance criteria.
+- Be penalized and/or de-registered for non-performance or provable misconduct.
 
 ## Minimum protocol changes
 

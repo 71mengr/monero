@@ -11,6 +11,10 @@ Define a deterministic bonded validator subsystem where operators lock collatera
 serve signed service duties, and receive protocol rewards with explicit penalties
 for missed obligations.
 
+Primary security objective: make coordinated 51% attacks and deep transaction
+history rewrites materially harder by requiring attackers to simultaneously sustain
+PoW dominance *and* satisfy bonded-validator constraints/evidence rules.
+
 ## Security checklist
 
 - [ ] Consensus encoding is canonical and deterministic.
@@ -22,6 +26,10 @@ for missed obligations.
 
 This RFC decomposes the rollout into consensus and non-consensus components so
 implementation can be staged safely:
+
+- Security focus: improve resistance to hashrate-majority abuse by coupling PoW
+  with collateralized validator evidence, delayed exits, and deterministic
+  deregistration.
 
 1. Add transaction and state transition rules for bonded participation.
 2. Select the active validator set deterministically per epoch.

@@ -47,7 +47,7 @@
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define WALLET_RPC_VERSION_MAJOR 1
-#define WALLET_RPC_VERSION_MINOR 30
+#define WALLET_RPC_VERSION_MINOR 31
 #define MAKE_WALLET_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define WALLET_RPC_VERSION MAKE_WALLET_RPC_VERSION(WALLET_RPC_VERSION_MAJOR, WALLET_RPC_VERSION_MINOR)
 namespace tools
@@ -693,6 +693,297 @@ namespace wallet_rpc
     typedef epee::misc_utils::struct_init<request_t> request;
 
     typedef split_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_MVM_DEPLOY_CONTRACT
+  {
+    struct request_t
+    {
+      std::list<transfer_destination> destinations;
+      uint32_t account_index;
+      std::set<uint32_t> subaddr_indices;
+      std::set<uint32_t> subtract_fee_from_outputs;
+      uint32_t priority;
+      uint64_t ring_size;
+      uint64_t unlock_time;
+      std::string payment_id;
+      bool get_tx_key;
+      bool do_not_relay;
+      bool get_tx_hex;
+      bool get_tx_metadata;
+      std::string action;
+      std::string contract_id;
+      std::string code_hash;
+      std::string salt;
+      std::string bytecode_hex;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(destinations)
+        KV_SERIALIZE(account_index)
+        KV_SERIALIZE(subaddr_indices)
+        KV_SERIALIZE_OPT(subtract_fee_from_outputs, decltype(subtract_fee_from_outputs)())
+        KV_SERIALIZE(priority)
+        KV_SERIALIZE_OPT(ring_size, (uint64_t)0)
+        KV_SERIALIZE(unlock_time)
+        KV_SERIALIZE(payment_id)
+        KV_SERIALIZE(get_tx_key)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+        KV_SERIALIZE_OPT(get_tx_hex, false)
+        KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE(action)
+        KV_SERIALIZE(contract_id)
+        KV_SERIALIZE(code_hash)
+        KV_SERIALIZE(salt)
+        KV_SERIALIZE_OPT(bytecode_hex, std::string())
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_MVM_CREATE_TOKEN
+  {
+    struct request_t
+    {
+      std::list<transfer_destination> destinations;
+      uint32_t account_index;
+      std::set<uint32_t> subaddr_indices;
+      std::set<uint32_t> subtract_fee_from_outputs;
+      uint32_t priority;
+      uint64_t ring_size;
+      uint64_t unlock_time;
+      std::string payment_id;
+      bool get_tx_key;
+      bool do_not_relay;
+      bool get_tx_hex;
+      bool get_tx_metadata;
+      std::string contract_id;
+      std::string code_hash;
+      std::string salt;
+      std::string symbol;
+      std::string name;
+      uint64_t supply;
+      uint8_t decimals;
+      std::string bytecode_hex;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(destinations)
+        KV_SERIALIZE(account_index)
+        KV_SERIALIZE(subaddr_indices)
+        KV_SERIALIZE_OPT(subtract_fee_from_outputs, decltype(subtract_fee_from_outputs)())
+        KV_SERIALIZE(priority)
+        KV_SERIALIZE_OPT(ring_size, (uint64_t)0)
+        KV_SERIALIZE(unlock_time)
+        KV_SERIALIZE(payment_id)
+        KV_SERIALIZE(get_tx_key)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+        KV_SERIALIZE_OPT(get_tx_hex, false)
+        KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE(contract_id)
+        KV_SERIALIZE(code_hash)
+        KV_SERIALIZE(salt)
+        KV_SERIALIZE(symbol)
+        KV_SERIALIZE(name)
+        KV_SERIALIZE(supply)
+        KV_SERIALIZE(decimals)
+        KV_SERIALIZE_OPT(bytecode_hex, std::string())
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_MVM_MINT_TOKEN
+  {
+    struct request_t
+    {
+      std::list<transfer_destination> destinations;
+      uint32_t account_index;
+      std::set<uint32_t> subaddr_indices;
+      std::set<uint32_t> subtract_fee_from_outputs;
+      uint32_t priority;
+      uint64_t ring_size;
+      uint64_t unlock_time;
+      std::string payment_id;
+      bool get_tx_key;
+      bool do_not_relay;
+      bool get_tx_hex;
+      bool get_tx_metadata;
+      std::string contract_id;
+      std::string code_hash;
+      std::string symbol;
+      std::string to;
+      uint64_t amount;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(destinations)
+        KV_SERIALIZE(account_index)
+        KV_SERIALIZE(subaddr_indices)
+        KV_SERIALIZE_OPT(subtract_fee_from_outputs, decltype(subtract_fee_from_outputs)())
+        KV_SERIALIZE(priority)
+        KV_SERIALIZE_OPT(ring_size, (uint64_t)0)
+        KV_SERIALIZE(unlock_time)
+        KV_SERIALIZE(payment_id)
+        KV_SERIALIZE(get_tx_key)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+        KV_SERIALIZE_OPT(get_tx_hex, false)
+        KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE(contract_id)
+        KV_SERIALIZE(code_hash)
+        KV_SERIALIZE(symbol)
+        KV_SERIALIZE(to)
+        KV_SERIALIZE(amount)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_MVM_TRANSFER_TOKEN
+  {
+    struct request_t
+    {
+      std::list<transfer_destination> destinations;
+      uint32_t account_index;
+      std::set<uint32_t> subaddr_indices;
+      std::set<uint32_t> subtract_fee_from_outputs;
+      uint32_t priority;
+      uint64_t ring_size;
+      uint64_t unlock_time;
+      std::string payment_id;
+      bool get_tx_key;
+      bool do_not_relay;
+      bool get_tx_hex;
+      bool get_tx_metadata;
+      std::string contract_id;
+      std::string code_hash;
+      std::string symbol;
+      std::string from;
+      std::string to;
+      uint64_t amount;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(destinations)
+        KV_SERIALIZE(account_index)
+        KV_SERIALIZE(subaddr_indices)
+        KV_SERIALIZE_OPT(subtract_fee_from_outputs, decltype(subtract_fee_from_outputs)())
+        KV_SERIALIZE(priority)
+        KV_SERIALIZE_OPT(ring_size, (uint64_t)0)
+        KV_SERIALIZE(unlock_time)
+        KV_SERIALIZE(payment_id)
+        KV_SERIALIZE(get_tx_key)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+        KV_SERIALIZE_OPT(get_tx_hex, false)
+        KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE(contract_id)
+        KV_SERIALIZE(code_hash)
+        KV_SERIALIZE(symbol)
+        KV_SERIALIZE(from)
+        KV_SERIALIZE(to)
+        KV_SERIALIZE(amount)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct mvm_contract_info
+  {
+    std::string action;
+    std::string contract_id;
+    std::string code_hash;
+    std::string token_symbol;
+    std::string token_name;
+    uint64_t token_supply;
+    uint8_t token_decimals;
+    std::string txid;
+    uint64_t block_height;
+    uint64_t timestamp;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(action)
+      KV_SERIALIZE(contract_id)
+      KV_SERIALIZE(code_hash)
+      KV_SERIALIZE(token_symbol)
+      KV_SERIALIZE(token_name)
+      KV_SERIALIZE(token_supply)
+      KV_SERIALIZE(token_decimals)
+      KV_SERIALIZE(txid)
+      KV_SERIALIZE(block_height)
+      KV_SERIALIZE(timestamp)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_RPC_MVM_GET_CONTRACT_HISTORY
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::vector<mvm_contract_info> contracts;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(contracts)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct mvm_token_balance_info
+  {
+    std::string contract_id;
+    std::string code_hash;
+    std::string symbol;
+    std::string token_address;
+    uint64_t received;
+    uint64_t sent;
+    uint64_t balance;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(contract_id)
+      KV_SERIALIZE(code_hash)
+      KV_SERIALIZE(symbol)
+      KV_SERIALIZE(token_address)
+      KV_SERIALIZE(received)
+      KV_SERIALIZE(sent)
+      KV_SERIALIZE(balance)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_RPC_MVM_GET_TOKEN_BALANCES
+  {
+    struct request_t
+    {
+      std::string token_address;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(token_address)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::vector<mvm_token_balance_info> balances;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(balances)
+      END_KV_SERIALIZE_MAP()
+    };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 

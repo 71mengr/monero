@@ -1343,6 +1343,297 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_deploy_contract(const wallet_rpc::COMMAND_RPC_MVM_DEPLOY_CONTRACT::request& req, wallet_rpc::COMMAND_RPC_MVM_DEPLOY_CONTRACT::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    std::vector<cryptonote::tx_destination_entry> dsts;
+    std::vector<uint8_t> extra;
+
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+    else if (req.unlock_time)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_NONZERO_UNLOCK_TIME;
+      er.message = "Transaction cannot have non-zero unlock time";
+      return false;
+    }
+
+    CHECK_MULTISIG_ENABLED();
+
+    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+      return false;
+
+    if (!m_wallet->make_mvm_contract_extra(req.action, req.contract_id, req.code_hash, req.salt, req.bytecode_hex, extra))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+      er.message = "Failed to construct MVM contract extra";
+      return false;
+    }
+
+    try
+    {
+      uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
+      uint32_t priority = m_wallet->adjust_priority(req.priority);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, mixin, priority, extra, req.account_index, req.subaddr_indices, req.subtract_fee_from_outputs);
+
+      if (ptx_vector.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+        er.message = "No transaction created";
+        return false;
+      }
+      if (ptx_vector.size() != 1)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
+        er.message = "Transaction would be too large";
+        return false;
+      }
+
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_create_token(const wallet_rpc::COMMAND_RPC_MVM_CREATE_TOKEN::request& req, wallet_rpc::COMMAND_RPC_MVM_CREATE_TOKEN::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    std::vector<cryptonote::tx_destination_entry> dsts;
+    std::vector<uint8_t> extra;
+
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+    else if (req.unlock_time)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_NONZERO_UNLOCK_TIME;
+      er.message = "Transaction cannot have non-zero unlock time";
+      return false;
+    }
+
+    CHECK_MULTISIG_ENABLED();
+
+    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+      return false;
+
+    if (!m_wallet->make_mvm_token_create_extra(req.contract_id, req.code_hash, req.salt, req.symbol, req.name, req.supply, req.decimals, req.bytecode_hex, extra))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+      er.message = "Failed to construct MVM contract extra";
+      return false;
+    }
+
+    try
+    {
+      uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
+      uint32_t priority = m_wallet->adjust_priority(req.priority);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, mixin, priority, extra, req.account_index, req.subaddr_indices, req.subtract_fee_from_outputs);
+
+      if (ptx_vector.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+        er.message = "No transaction created";
+        return false;
+      }
+      if (ptx_vector.size() != 1)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
+        er.message = "Transaction would be too large";
+        return false;
+      }
+
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_mint_token(const wallet_rpc::COMMAND_RPC_MVM_MINT_TOKEN::request& req, wallet_rpc::COMMAND_RPC_MVM_MINT_TOKEN::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    std::vector<cryptonote::tx_destination_entry> dsts;
+    std::vector<uint8_t> extra;
+
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+    else if (req.unlock_time)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_NONZERO_UNLOCK_TIME;
+      er.message = "Transaction cannot have non-zero unlock time";
+      return false;
+    }
+
+    CHECK_MULTISIG_ENABLED();
+
+    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+      return false;
+
+    if (!m_wallet->make_mvm_token_mint_extra(req.contract_id, req.code_hash, req.symbol, req.to, req.amount, extra))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+      er.message = "Failed to construct MVM contract extra";
+      return false;
+    }
+
+    try
+    {
+      uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
+      uint32_t priority = m_wallet->adjust_priority(req.priority);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, mixin, priority, extra, req.account_index, req.subaddr_indices, req.subtract_fee_from_outputs);
+
+      if (ptx_vector.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+        er.message = "No transaction created";
+        return false;
+      }
+      if (ptx_vector.size() != 1)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
+        er.message = "Transaction would be too large";
+        return false;
+      }
+
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_transfer_token(const wallet_rpc::COMMAND_RPC_MVM_TRANSFER_TOKEN::request& req, wallet_rpc::COMMAND_RPC_MVM_TRANSFER_TOKEN::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    std::vector<cryptonote::tx_destination_entry> dsts;
+    std::vector<uint8_t> extra;
+
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+    else if (req.unlock_time)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_NONZERO_UNLOCK_TIME;
+      er.message = "Transaction cannot have non-zero unlock time";
+      return false;
+    }
+
+    CHECK_MULTISIG_ENABLED();
+
+    if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
+      return false;
+
+    if (!m_wallet->make_mvm_token_transfer_extra(req.contract_id, req.code_hash, req.symbol, req.from, req.to, req.amount, extra))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+      er.message = "Failed to construct MVM contract extra";
+      return false;
+    }
+
+    try
+    {
+      uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
+      uint32_t priority = m_wallet->adjust_priority(req.priority);
+      std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(dsts, mixin, priority, extra, req.account_index, req.subaddr_indices, req.subtract_fee_from_outputs);
+
+      if (ptx_vector.empty())
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+        er.message = "No transaction created";
+        return false;
+      }
+      if (ptx_vector.size() != 1)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
+        er.message = "Transaction would be too large";
+        return false;
+      }
+
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_get_contract_history(const wallet_rpc::COMMAND_RPC_MVM_GET_CONTRACT_HISTORY::request& req, wallet_rpc::COMMAND_RPC_MVM_GET_CONTRACT_HISTORY::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    CHECK_IF_BACKGROUND_SYNCING();
+
+    std::vector<wallet2::mvm_contract_entry> contracts;
+    m_wallet->get_mvm_contract_history(contracts);
+    res.contracts.clear();
+    res.contracts.reserve(contracts.size());
+    for (const wallet2::mvm_contract_entry &entry : contracts)
+    {
+      res.contracts.push_back(wallet_rpc::mvm_contract_info{
+        entry.action,
+        entry.contract_id,
+        entry.code_hash,
+        entry.token_symbol,
+        entry.token_name,
+        entry.token_supply,
+        entry.token_decimals,
+        epee::string_tools::pod_to_hex(entry.txid),
+        entry.block_height,
+        entry.timestamp
+      });
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_mvm_get_token_balances(const wallet_rpc::COMMAND_RPC_MVM_GET_TOKEN_BALANCES::request& req, wallet_rpc::COMMAND_RPC_MVM_GET_TOKEN_BALANCES::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    CHECK_IF_BACKGROUND_SYNCING();
+
+    std::vector<wallet2::mvm_token_balance_entry> balances;
+    m_wallet->get_mvm_token_balances(req.token_address, balances);
+    res.balances.clear();
+    res.balances.reserve(balances.size());
+    for (const wallet2::mvm_token_balance_entry &entry : balances)
+    {
+      res.balances.push_back(wallet_rpc::mvm_token_balance_info{
+        entry.contract_id,
+        entry.code_hash,
+        entry.symbol,
+        entry.token_address,
+        entry.received,
+        entry.sent,
+        entry.balance
+      });
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_sign_transfer(const wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);

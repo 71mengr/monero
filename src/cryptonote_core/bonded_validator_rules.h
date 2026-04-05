@@ -4,6 +4,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -204,6 +205,22 @@ namespace cryptonote
       const crypto::hash& proof_digest,
       const std::set<std::string>& observed_keys,
       const std::vector<std::pair<std::string, crypto::hash>>& observed_equivocations);
+
+  bool consensus_confirms_instant_deregistration(
+      const deregistration_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      bool allow_self_confirmation,
+      std::string* reason = nullptr);
+
+  bool mainnet_consensus_confirms_instant_deregistration(
+      network_type nettype,
+      uint8_t hf_version,
+      const deregistration_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      bool allow_self_confirmation,
+      std::string* reason = nullptr);
 
   bool bonded_validator_reward_tier_is_enabled(
       network_type nettype,

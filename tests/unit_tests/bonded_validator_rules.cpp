@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <unordered_set>
+
 #include "cryptonote_core/bonded_validator_rules.h"
 #include "storages/portable_storage.h"
 
@@ -427,4 +429,82 @@ TEST(bonded_validator_rules, evaluate_duty_enforcement_states)
   result = cryptonote::evaluate_duty_enforcement(6500, 12, criteria);
   ASSERT_EQ(result.state, cryptonote::duty_enforcement_state::deregistered);
   ASSERT_EQ(result.haircut_bps, 10000);
+}
+
+
+TEST(bonded_validator_rules, illegal_validator_alert_requires_peer_confirmation_for_instant_deregistration)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "bad-validator";
+  proof.epoch = 42;
+  proof.duty_slot = 9;
+  proof.reason_code = 7;
+  proof.evidence_height = 9001;
+  proof.signatures = {"discoverer-signature"};
+
+  std::string reason;
+  std::unordered_set<std::string> self_only{"bad-validator"};
+  ASSERT_FALSE(cryptonote::consensus_confirms_instant_deregistration(proof, self_only, 1, true, &reason));
+
+  std::unordered_set<std::string> quorum{"discoverer", "auditor-2"};
+  ASSERT_TRUE(cryptonote::consensus_confirms_instant_deregistration(proof, quorum, 2, true, &reason)) << reason;
+
+  std::unordered_set<std::string> with_self{"bad-validator", "auditor-2"};
+  ASSERT_FALSE(cryptonote::consensus_confirms_instant_deregistration(proof, with_self, 2, false, &reason));
+}
+
+TEST(bonded_validator_rules, deregistration_proof_rejects_unspecified_reason_code)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "validator-reason";
+  proof.epoch = 7;
+  proof.duty_slot = 1;
+  proof.reason_code = 0;
+  proof.evidence_height = 222;
+  proof.signatures = {"sig-a"};
+
+  std::string reason;
+  ASSERT_FALSE(proof.is_well_formed(1, &reason));
+}
+
+
+TEST(bonded_validator_rules, instant_deregistration_consensus_is_mainnet_gated)
+{
+  cryptonote::deregistration_proof proof{};
+  proof.validator_id = "bad-validator";
+  proof.epoch = 42;
+  proof.duty_slot = 9;
+  proof.reason_code = 7;
+  proof.evidence_height = 9001;
+  proof.signatures = {"discoverer-signature"};
+
+  std::unordered_set<std::string> quorum{"discoverer", "auditor-2"};
+  std::string reason;
+
+  ASSERT_FALSE(cryptonote::mainnet_consensus_confirms_instant_deregistration(
+      cryptonote::TESTNET,
+      HF_MN_REG,
+      proof,
+      quorum,
+      2,
+      true,
+      &reason));
+
+  ASSERT_FALSE(cryptonote::mainnet_consensus_confirms_instant_deregistration(
+      cryptonote::MAINNET,
+      HF_MN_REG - 1,
+      proof,
+      quorum,
+      2,
+      true,
+      &reason));
+
+  ASSERT_TRUE(cryptonote::mainnet_consensus_confirms_instant_deregistration(
+      cryptonote::MAINNET,
+      HF_MN_REG,
+      proof,
+      quorum,
+      2,
+      true,
+      &reason)) << reason;
 }

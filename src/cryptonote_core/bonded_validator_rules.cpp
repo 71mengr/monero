@@ -39,6 +39,60 @@ namespace
 
 namespace cryptonote
 {
+
+  bool consensus_confirms_instant_deregistration(
+      const deregistration_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      bool allow_self_confirmation,
+      std::string* reason)
+  {
+    if (!proof.is_well_formed(1, reason))
+      return false;
+
+    if (!allow_self_confirmation && confirming_validator_ids.count(proof.validator_id) > 0)
+    {
+      if (reason) *reason = "self-confirmation is disabled";
+      return false;
+    }
+
+    if (confirming_validator_ids.size() < min_confirmations)
+    {
+      if (reason) *reason = "not enough validator confirmations for instant deregistration";
+      return false;
+    }
+
+    if (confirming_validator_ids.count(proof.validator_id) == confirming_validator_ids.size())
+    {
+      if (reason) *reason = "instant deregistration requires at least one peer confirmation";
+      return false;
+    }
+
+    return true;
+  }
+
+  bool mainnet_consensus_confirms_instant_deregistration(
+      network_type nettype,
+      uint8_t hf_version,
+      const deregistration_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      bool allow_self_confirmation,
+      std::string* reason)
+  {
+    if (!bonded_validator_registration_tier_is_enabled(nettype, hf_version))
+    {
+      if (reason) *reason = "instant deregistration consensus is only enabled on mainnet after validator registration activation";
+      return false;
+    }
+
+    return consensus_confirms_instant_deregistration(
+        proof,
+        confirming_validator_ids,
+        min_confirmations,
+        allow_self_confirmation,
+        reason);
+  }
   bool bonded_validator_reward_tier_is_enabled(
       network_type nettype,
       uint8_t hf_version)
@@ -152,6 +206,11 @@ namespace cryptonote
     if (evidence_height == 0)
     {
       if (reason) *reason = "evidence height must be > 0";
+      return false;
+    }
+    if (reason_code == 0)
+    {
+      if (reason) *reason = "reason code must be non-zero";
       return false;
     }
     if (!signatures_are_canonical_and_unique(signatures))

@@ -143,9 +143,9 @@ namespace nodetool
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
     public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_BASE;
-    if (m_network_id == config::NETWORK_ID)
+    if (m_network_id == ::config::NETWORK_ID)
       public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_MAINNET;
-    else if (m_network_id == config::testnet::NETWORK_ID)
+    else if (m_network_id == ::config::testnet::NETWORK_ID)
       public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS_TESTNET;
     public_zone.m_config.m_peer_id = crypto::rand<uint64_t>();
     m_first_connection_maker_call = true;

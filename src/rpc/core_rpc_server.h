@@ -94,6 +94,7 @@ namespace cryptonote
         const std::string& proxy = {}
       );
     network_type nettype() const { return m_core.get_nettype(); }
+    bool get_mvm_contract_blobs(std::vector<std::pair<std::string, cryptonote::blobdata>>& blobs) const;
 
     CHAIN_HTTP_TO_MAP2(connection_context); //forward http requests to uri map
 

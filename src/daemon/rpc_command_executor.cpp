@@ -39,8 +39,10 @@
 #include "cryptonote_basic/hardfork.h"
 #include "rpc/rpc_payment_signature.h"
 #include "rpc/rpc_version_str.h"
+#include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <ctime>
+#include <unordered_map>
 #include <string>
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -147,6 +149,21 @@ namespace {
     if (status == CORE_RPC_STATUS_OK)
       return base;
     return base + " -- " + status;
+  }
+
+  std::unordered_map<std::string, std::string> parse_blob_kv(const cryptonote::blobdata& blob)
+  {
+    std::unordered_map<std::string, std::string> out;
+    std::vector<std::string> parts;
+    boost::split(parts, blob, boost::is_any_of(";"));
+    for (const std::string& part : parts)
+    {
+      const size_t pos = part.find('=');
+      if (pos == std::string::npos || pos == 0)
+        continue;
+      out.emplace(part.substr(0, pos), part.substr(pos + 1));
+    }
+    return out;
   }
 }
 
@@ -1089,6 +1106,113 @@ bool t_rpc_command_executor::print_masternode_payments(const std::string &id, ui
         << ", amount=" << cryptonote::print_money(reward.amount)
         << ", txid=" << reward.txid;
   }
+  return true;
+}
+
+bool t_rpc_command_executor::print_token_list()
+{
+  if (m_is_rpc)
+  {
+    tools::fail_msg_writer() << "tokenlist is currently available only on local monerod console mode";
+    return true;
+  }
+
+  std::vector<std::pair<std::string, cryptonote::blobdata>> blobs;
+  if (!m_rpc_server->get_mvm_contract_blobs(blobs))
+  {
+    tools::fail_msg_writer() << "Failed to load MVM contract entries";
+    return true;
+  }
+
+  tools::msg_writer() << "symbol | name | contract_id | monero_txid | block_height";
+  for (const auto& [key, blob] : blobs)
+  {
+    if (key.find(':') != std::string::npos)
+      continue;
+    auto fields = parse_blob_kv(blob);
+    const auto action = fields.find("action");
+    if (action == fields.end() || action->second != "create_token")
+      continue;
+    tools::msg_writer()
+      << fields["token_symbol"] << " | "
+      << fields["token_name"] << " | "
+      << fields["contract_id"] << " | "
+      << fields["monero_txid"] << " | "
+      << fields["monero_block_height"];
+  }
+  return true;
+}
+
+bool t_rpc_command_executor::print_contract_list()
+{
+  if (m_is_rpc)
+  {
+    tools::fail_msg_writer() << "contractlist is currently available only on local monerod console mode";
+    return true;
+  }
+
+  std::vector<std::pair<std::string, cryptonote::blobdata>> blobs;
+  if (!m_rpc_server->get_mvm_contract_blobs(blobs))
+  {
+    tools::fail_msg_writer() << "Failed to load MVM contract entries";
+    return true;
+  }
+
+  tools::msg_writer() << "action | contract_id | code_hash | monero_txid | block_height";
+  for (const auto& [key, blob] : blobs)
+  {
+    if (key.find(':') != std::string::npos)
+      continue;
+    auto fields = parse_blob_kv(blob);
+    tools::msg_writer()
+      << fields["action"] << " | "
+      << fields["contract_id"] << " | "
+      << fields["code_hash"] << " | "
+      << fields["monero_txid"] << " | "
+      << fields["monero_block_height"];
+  }
+  return true;
+}
+
+bool t_rpc_command_executor::print_token_info(const std::string &symbol_or_contract_id)
+{
+  if (m_is_rpc)
+  {
+    tools::fail_msg_writer() << "tokeninfo is currently available only on local monerod console mode";
+    return true;
+  }
+
+  std::vector<std::pair<std::string, cryptonote::blobdata>> blobs;
+  if (!m_rpc_server->get_mvm_contract_blobs(blobs))
+  {
+    tools::fail_msg_writer() << "Failed to load MVM contract entries";
+    return true;
+  }
+
+  for (const auto& [key, blob] : blobs)
+  {
+    if (key.find(':') != std::string::npos)
+      continue;
+    auto fields = parse_blob_kv(blob);
+    if (fields.find("action") == fields.end() || fields.at("action") != "create_token")
+      continue;
+    const bool matches_symbol = fields.find("token_symbol") != fields.end() && fields.at("token_symbol") == symbol_or_contract_id;
+    const bool matches_contract = fields.find("contract_id") != fields.end() && fields.at("contract_id") == symbol_or_contract_id;
+    if (!matches_symbol && !matches_contract)
+      continue;
+    tools::success_msg_writer()
+      << "symbol: " << fields["token_symbol"] << std::endl
+      << "name: " << fields["token_name"] << std::endl
+      << "contract_id: " << fields["contract_id"] << std::endl
+      << "code_hash: " << fields["code_hash"] << std::endl
+      << "supply: " << fields["token_supply"] << std::endl
+      << "decimals: " << fields["token_decimals"] << std::endl
+      << "deployment_txid: " << fields["monero_txid"] << std::endl
+      << "deployment_block_height: " << fields["monero_block_height"];
+    return true;
+  }
+
+  tools::fail_msg_writer() << "Token not found: " << symbol_or_contract_id;
   return true;
 }
 

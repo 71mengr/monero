@@ -18,6 +18,9 @@ TEST(TxExtraMvm, add_and_get_roundtrip)
   expected.token_supply = 1000000000000;
   expected.token_decimals = 6;
   expected.bytecode_hex = "6001600201";
+  expected.monero_txid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  expected.has_monero_block_height = true;
+  expected.monero_block_height = 3456789;
 
   ASSERT_TRUE(cryptonote::add_mvm_contract_to_tx_extra(extra, expected));
 
@@ -32,6 +35,9 @@ TEST(TxExtraMvm, add_and_get_roundtrip)
   ASSERT_EQ(parsed.token_supply, expected.token_supply);
   ASSERT_EQ(parsed.token_decimals, expected.token_decimals);
   ASSERT_EQ(parsed.bytecode_hex, expected.bytecode_hex);
+  ASSERT_EQ(parsed.monero_txid, expected.monero_txid);
+  ASSERT_EQ(parsed.has_monero_block_height, expected.has_monero_block_height);
+  ASSERT_EQ(parsed.monero_block_height, expected.monero_block_height);
 }
 
 TEST(TxExtraMvm, rejects_empty_fields)
@@ -100,4 +106,19 @@ TEST(TxExtraMvm, supply_and_amount_have_upper_bounds)
 
   invalid.token_supply = cryptonote::TX_EXTRA_MVM_TOKEN_SUPPLY_MAX;
   ASSERT_TRUE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
+}
+
+TEST(TxExtraMvm, rejects_invalid_monero_txid)
+{
+  std::vector<uint8_t> extra;
+  cryptonote::tx_extra_mvm_contract invalid{};
+  invalid.version = cryptonote::TX_EXTRA_MVM_CONTRACT_VERSION;
+  invalid.action = "create_token";
+  invalid.contract_id = "mvmc_invalid_txid";
+  invalid.code_hash = "abc123";
+  invalid.token_symbol = "USDT";
+  invalid.token_supply = 1000;
+  invalid.bytecode_hex = "6001600201";
+  invalid.monero_txid = "xyz-not-hex";
+  ASSERT_FALSE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
 }

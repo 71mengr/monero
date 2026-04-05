@@ -35,6 +35,12 @@ Security checks in runtime:
 - Total supply and transfer/mint amount bounds (`1..10^18`)
 - Sender and receiver token addresses must differ
 - Per-token block-height monotonicity (`last_height`) for sync safety
+- Token deployment metadata capture under `monero_tx` (`txid`, `block_height`)
+- Optional deployment height assertion (`monero_tx.block_height`) must match runtime `block_height`
+
+Token contracts are deployed via normal Monero transactions on the existing chain.
+So the relevant height is the Monero block height of the deployment transaction,
+not a token-specific chain height.
 
 ## Run example
 

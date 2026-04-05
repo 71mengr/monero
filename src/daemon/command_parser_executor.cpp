@@ -338,6 +338,36 @@ bool t_command_parser_executor::print_masternode_payments(const std::vector<std:
   return m_executor.print_masternode_payments(args[0], from_height, to_height);
 }
 
+bool t_command_parser_executor::print_token_list(const std::vector<std::string>& args)
+{
+  if (!args.empty())
+  {
+    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+  return m_executor.print_token_list();
+}
+
+bool t_command_parser_executor::print_contract_list(const std::vector<std::string>& args)
+{
+  if (!args.empty())
+  {
+    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+  return m_executor.print_contract_list();
+}
+
+bool t_command_parser_executor::print_token_info(const std::vector<std::string>& args)
+{
+  if (args.size() != 1)
+  {
+    std::cout << "Invalid syntax: tokeninfo <symbol_or_contract_id>. For more details, use the help command." << std::endl;
+    return true;
+  }
+  return m_executor.print_token_info(args[0]);
+}
+
 bool t_command_parser_executor::print_transaction(const std::vector<std::string>& args)
 {
   bool include_metadata = false;
@@ -975,6 +1005,16 @@ bool t_command_parser_executor::relay_tx(const std::vector<std::string>& args)
   }
   txid = args[0];
   return m_executor.relay_tx(txid);
+}
+
+bool t_command_parser_executor::broadcast_token(const std::vector<std::string>& args)
+{
+  return relay_tx(args);
+}
+
+bool t_command_parser_executor::broadcast_contract(const std::vector<std::string>& args)
+{
+  return relay_tx(args);
 }
 
 bool t_command_parser_executor::sync_info(const std::vector<std::string>& args)

@@ -169,6 +169,16 @@ class MVM:
             decimals = int(ins.get("decimals", 18))
             total_supply = int(ins["supply"])
             owner = str(ins.get("owner", "owner"))
+            current_height = int(self.state.memory.get("block_height", 0))
+            monero_tx_raw = ins.get("monero_tx", {})
+            if monero_tx_raw is None:
+                monero_tx_raw = {}
+            if not isinstance(monero_tx_raw, dict):
+                raise MVMError("monero_tx must be an object")
+            deployment_txid = str(
+                monero_tx_raw.get("txid", ins.get("deployment_txid", ""))
+            ).strip()
+            deployment_height = monero_tx_raw.get("block_height", ins.get("deployment_height"))
             self._require_address(owner)
             if decimals < 0 or decimals > 30:
                 raise MVMError("token decimals must be in range [0,30]")
@@ -177,16 +187,38 @@ class MVM:
             if symbol in self.state.tokens:
                 raise MVMError(f"token '{symbol}' already exists")
             self._require_symbol(symbol)
+            if deployment_height is not None:
+                deployment_height = int(deployment_height)
+                if deployment_height < 0:
+                    raise MVMError("deployment height must be non-negative")
+                if deployment_height != current_height:
+                    raise MVMError("deployment height must match current block height")
+            else:
+                deployment_height = current_height
             self.state.tokens[symbol] = {
                 "contract_id": contract_id,
                 "name": str(ins.get("name", symbol)),
                 "decimals": decimals,
                 "total_supply": total_supply,
-                "created_at_height": int(self.state.memory.get("block_height", 0)),
-                "last_height": int(self.state.memory.get("block_height", 0)),
+                "created_at_height": current_height,
+                "monero_tx": {
+                    "txid": deployment_txid,
+                    "block_height": deployment_height,
+                },
+                "last_height": current_height,
                 "balances": {owner: total_supply},
             }
-            self.state.events.append({"name": "TokenCreated", "symbol": symbol, "supply": total_supply})
+            self.state.events.append(
+                {
+                    "name": "TokenCreated",
+                    "symbol": symbol,
+                    "supply": total_supply,
+                    "monero_tx": {
+                        "txid": deployment_txid,
+                        "block_height": deployment_height,
+                    },
+                }
+            )
         elif op == "MINT_TOKEN":
             symbol = str(ins["symbol"])
             to = str(ins["to"])

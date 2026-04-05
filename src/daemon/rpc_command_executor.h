@@ -98,6 +98,9 @@ public:
   bool print_masternodes(bool include_inactive);
   bool print_masternode(const std::string &id);
   bool print_masternode_payments(const std::string &id, uint64_t from_height, uint64_t to_height);
+  bool print_token_list();
+  bool print_contract_list();
+  bool print_token_info(const std::string &symbol_or_contract_id);
 
   bool print_transaction(crypto::hash transaction_hash, bool include_metadata, bool include_hex, bool include_json);
 

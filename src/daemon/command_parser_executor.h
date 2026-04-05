@@ -86,6 +86,11 @@ public:
   bool print_masternodes(const std::vector<std::string>& args);
   bool print_masternode(const std::vector<std::string>& args);
   bool print_masternode_payments(const std::vector<std::string>& args);
+  bool print_token_list(const std::vector<std::string>& args);
+  bool print_contract_list(const std::vector<std::string>& args);
+  bool print_token_info(const std::vector<std::string>& args);
+  bool broadcast_token(const std::vector<std::string>& args);
+  bool broadcast_contract(const std::vector<std::string>& args);
 
   bool print_transaction(const std::vector<std::string>& args);
 

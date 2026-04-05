@@ -326,7 +326,10 @@ cryptonote::blobdata serialize_mvm_contract_blob(
       << ";token_from=" << mvm_contract.token_from
       << ";token_to=" << mvm_contract.token_to
       << ";token_amount=" << mvm_contract.token_amount
-      << ";bytecode_hex=" << mvm_contract.bytecode_hex;
+      << ";bytecode_hex=" << mvm_contract.bytecode_hex
+      << ";monero_txid=" << mvm_contract.monero_txid
+      << ";has_monero_block_height=" << (mvm_contract.has_monero_block_height ? 1 : 0)
+      << ";monero_block_height=" << mvm_contract.monero_block_height;
   return oss.str();
 }
 }
@@ -1031,6 +1034,11 @@ void Blockchain::apply_mvm_contracts_from_block(
     }
 
     const crypto::hash tx_hash = get_transaction_hash(tx);
+    // For mainnet indexing, deployment provenance comes from the enclosing Monero tx itself.
+    // This overrides any optional payload hints carried in tx_extra.
+    mvm_contract.monero_txid = epee::string_tools::pod_to_hex(tx_hash);
+    mvm_contract.has_monero_block_height = true;
+    mvm_contract.monero_block_height = height;
     const cryptonote::blobdata blob = serialize_mvm_contract_blob(tx_hash, height, timestamp, mvm_contract);
     m_db->set_mvm_contract_blob(mvm_contract.contract_id, blob);
     const std::string timeline_key = mvm_contract.contract_id + ":" + std::to_string(height) + ":" + epee::string_tools::pod_to_hex(tx_hash);

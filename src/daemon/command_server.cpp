@@ -126,6 +126,24 @@ t_command_server::t_command_server(
     , "Print bonded-validator payment history for one id."
     );
   m_command_lookup.set_handler(
+      "tokenlist"
+    , std::bind(&t_command_parser_executor::print_token_list, &m_parser, p::_1)
+    , "tokenlist"
+    , "Print indexed token contracts from mainnet MVM data."
+    );
+  m_command_lookup.set_handler(
+      "contractlist"
+    , std::bind(&t_command_parser_executor::print_contract_list, &m_parser, p::_1)
+    , "contractlist"
+    , "Print indexed smart-contract actions from mainnet MVM data."
+    );
+  m_command_lookup.set_handler(
+      "tokeninfo"
+    , std::bind(&t_command_parser_executor::print_token_info, &m_parser, p::_1)
+    , "tokeninfo <symbol_or_contract_id>"
+    , "Print token details and deployment transaction metadata."
+    );
+  m_command_lookup.set_handler(
       "print_tx"
     , std::bind(&t_command_parser_executor::print_transaction, &m_parser, p::_1)
     , "print_tx <transaction_hash> [+hex] [+json]"
@@ -314,6 +332,18 @@ t_command_server::t_command_server(
     , std::bind(&t_command_parser_executor::relay_tx, &m_parser, p::_1)
     , "relay_tx <txid>"
     , "Relay a given transaction by its <txid>."
+    );
+    m_command_lookup.set_handler(
+      "broadcast_token"
+    , std::bind(&t_command_parser_executor::broadcast_token, &m_parser, p::_1)
+    , "broadcast_token <txid>"
+    , "Relay a token transaction by its <txid>."
+    );
+    m_command_lookup.set_handler(
+      "broadcast_contract"
+    , std::bind(&t_command_parser_executor::broadcast_contract, &m_parser, p::_1)
+    , "broadcast_contract <txid>"
+    , "Relay a smart-contract transaction by its <txid>."
     );
     m_command_lookup.set_handler(
       "sync_info"

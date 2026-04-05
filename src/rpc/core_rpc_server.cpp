@@ -298,6 +298,16 @@ namespace cryptonote
       m_rpc_payment->store();
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::get_mvm_contract_blobs(std::vector<std::pair<std::string, cryptonote::blobdata>>& blobs) const
+  {
+    blobs.clear();
+    return m_core.get_blockchain_storage().get_db().for_all_mvm_contract_blobs(
+        [&blobs](const std::string& key, const cryptonote::blobdata& blob) {
+          blobs.emplace_back(key, blob);
+          return true;
+        });
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::init(
       const boost::program_options::variables_map& vm
       , const bool restricted

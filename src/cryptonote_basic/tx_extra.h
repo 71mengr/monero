@@ -51,7 +51,8 @@
 namespace cryptonote
 {
   constexpr uint8_t TX_EXTRA_MASTERNODE_REGISTRATION_VERSION = 1;
-  constexpr uint8_t TX_EXTRA_MVM_CONTRACT_VERSION = 1;
+  constexpr uint8_t TX_EXTRA_MVM_CONTRACT_VERSION = 2;
+  constexpr uint8_t TX_EXTRA_MVM_CONTRACT_VERSION_MIN = 1;
   constexpr size_t TX_EXTRA_MASTERNODE_SERVICE_ENDPOINT_COMMITMENT_MAX_SIZE = 64;
   constexpr size_t TX_EXTRA_MVM_ACTION_MAX_SIZE = 32;
   constexpr size_t TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE = 64;
@@ -60,6 +61,7 @@ namespace cryptonote
   constexpr size_t TX_EXTRA_MVM_TOKEN_NAME_MAX_SIZE = 64;
   constexpr size_t TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE = 128;
   constexpr size_t TX_EXTRA_MVM_BYTECODE_MAX_SIZE = 4096;
+  constexpr size_t TX_EXTRA_MVM_TXID_MAX_SIZE = 64;
   constexpr uint64_t TX_EXTRA_MVM_TOKEN_SUPPLY_MAX = 1000000000000000000ull;
   constexpr uint64_t TX_EXTRA_MVM_TOKEN_AMOUNT_MAX = 1000000000000000000ull;
 
@@ -249,6 +251,9 @@ namespace cryptonote
     std::string token_to;
     uint64_t token_amount = 0;
     std::string bytecode_hex;
+    std::string monero_txid;
+    bool has_monero_block_height = false;
+    uint64_t monero_block_height = 0;
 
     BEGIN_SERIALIZE()
       FIELD(version)
@@ -263,6 +268,14 @@ namespace cryptonote
       FIELD(token_to)
       FIELD(token_amount)
       FIELD(bytecode_hex)
+      if (version >= 2)
+      {
+        FIELD(monero_txid)
+        FIELD(has_monero_block_height)
+        if (has_monero_block_height)
+          VARINT_FIELD(monero_block_height)
+      }
+      if (version < TX_EXTRA_MVM_CONTRACT_VERSION_MIN || version > TX_EXTRA_MVM_CONTRACT_VERSION) return false;
       if (action.empty() || action.size() > TX_EXTRA_MVM_ACTION_MAX_SIZE) return false;
       if (contract_id.empty() || contract_id.size() > TX_EXTRA_MVM_CONTRACT_ID_MAX_SIZE) return false;
       if (code_hash.empty() || code_hash.size() > TX_EXTRA_MVM_CODE_HASH_MAX_SIZE) return false;
@@ -274,10 +287,19 @@ namespace cryptonote
       if (token_from.size() > TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE) return false;
       if (token_to.size() > TX_EXTRA_MVM_TOKEN_ADDRESS_MAX_SIZE) return false;
       if (bytecode_hex.size() > TX_EXTRA_MVM_BYTECODE_MAX_SIZE) return false;
+      if (monero_txid.size() > TX_EXTRA_MVM_TXID_MAX_SIZE) return false;
       if (!bytecode_hex.empty())
       {
         if (bytecode_hex.size() % 2 != 0) return false;
         for (const char c : bytecode_hex)
+        {
+          if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+        }
+      }
+      if (!monero_txid.empty())
+      {
+        if (monero_txid.size() % 2 != 0) return false;
+        for (const char c : monero_txid)
         {
           if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
         }

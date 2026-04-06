@@ -688,11 +688,11 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   if (m_hardfork == nullptr)
   {
     if (m_nettype ==  FAKECHAIN || m_nettype == STAGENET)
-      m_hardfork = new HardFork(*db, 1, 0);
+      m_hardfork = new HardFork(*db, 16, 0);
     else if (m_nettype == TESTNET)
-      m_hardfork = new HardFork(*db, 1, testnet_hard_fork_version_1_till);
+      m_hardfork = new HardFork(*db, 16, testnet_hard_fork_version_1_till);
     else
-      m_hardfork = new HardFork(*db, 1, mainnet_hard_fork_version_1_till);
+      m_hardfork = new HardFork(*db, 16, mainnet_hard_fork_version_1_till);
   }
   if (m_nettype == FAKECHAIN)
   {
@@ -775,13 +775,14 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   rtxn_guard.stop();
 
   uint64_t num_popped_blocks = 0;
+  const uint8_t baseline_hf_version = get_ideal_hard_fork_version(0);
   while (!m_db->is_read_only())
   {
     uint64_t top_height;
     const crypto::hash top_id = m_db->top_block_hash(&top_height);
     const block top_block = m_db->get_top_block();
     const uint8_t ideal_hf_version = get_ideal_hard_fork_version(top_height);
-    if (ideal_hf_version <= 1 || ideal_hf_version == top_block.major_version)
+    if (ideal_hf_version <= baseline_hf_version || ideal_hf_version == top_block.major_version)
     {
       if (num_popped_blocks > 0)
         MGINFO("Initial popping done, top block: " << top_id << ", top height: " << top_height << ", block version: " << (uint64_t)top_block.major_version);

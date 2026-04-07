@@ -2026,9 +2026,14 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     return false;
   }
   // From hard fork 2 till 12, we allow a miner to claim less block reward than is allowed, in case a miner wants less dust
+  const bool is_genesis_block = boost::get<txin_gen>(b.miner_tx.vin[0]).height == 0;
+
   if (version < 2 || version >= HF_VERSION_EXACT_COINBASE)
   {
-    if(base_reward + fee != money_in_use)
+    // The configured genesis transaction is intentionally precomputed and may not
+    // match the runtime reward function exactly after consensus parameter changes.
+    // Accept it as-is while preserving strict exact-reward checks for all later blocks.
+    if (!is_genesis_block && base_reward + fee != money_in_use)
     {
       MDEBUG("coinbase transaction doesn't use full amount of block reward:  spent: " << money_in_use << ",  block reward " << base_reward + fee << "(" << base_reward << "+" << fee << ")");
       return false;

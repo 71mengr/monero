@@ -251,6 +251,11 @@ namespace cryptonote
       if (reason) *reason = "timestamp must be > 0";
       return false;
     }
+    if ((checkpoint_height == 0) != checkpoint_hash.empty())
+    {
+      if (reason) *reason = "checkpoint height/hash must be provided together";
+      return false;
+    }
     if (!non_empty_trimmed(signature))
     {
       if (reason) *reason = "signature missing";

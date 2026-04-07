@@ -131,6 +131,8 @@ namespace cryptonote
     std::string validator_id;
     uint64_t epoch = 0;
     uint64_t timestamp = 0;
+    uint64_t checkpoint_height = 0;
+    std::string checkpoint_hash;
     std::string signature;
 
     bool is_well_formed(std::string* reason = nullptr) const;

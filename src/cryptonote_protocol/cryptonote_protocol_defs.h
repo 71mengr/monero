@@ -229,12 +229,16 @@ namespace cryptonote
     std::string validator_id;
     uint64_t epoch = 0;
     uint64_t timestamp = 0;
+    uint64_t checkpoint_height = 0;
+    std::string checkpoint_hash;
     std::string signature;
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(validator_id)
       KV_SERIALIZE(epoch)
       KV_SERIALIZE(timestamp)
+      KV_SERIALIZE_OPT(checkpoint_height, (uint64_t)0)
+      KV_SERIALIZE_OPT(checkpoint_hash, std::string())
       KV_SERIALIZE(signature)
     END_KV_SERIALIZE_MAP()
   };

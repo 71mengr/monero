@@ -952,11 +952,22 @@ namespace cryptonote
       if (!masternode.active || masternode.deregistered)
         continue;
 
+      uint64_t checkpoint_height = 0;
+      std::string checkpoint_hash;
+      const auto& checkpoints = m_core.get_checkpoints().get_points();
+      if (!checkpoints.empty())
+      {
+        checkpoint_height = checkpoints.rbegin()->first;
+        checkpoint_hash = epee::string_tools::pod_to_hex(checkpoints.rbegin()->second);
+      }
+
       p2p_masternode_heartbeat heartbeat{};
       heartbeat.validator_id = masternode.id;
       heartbeat.epoch = current_height;
       heartbeat.timestamp = now;
-      heartbeat.signature = "p2p-heartbeat:" + std::to_string(current_height) + ":" + masternode.id;
+      heartbeat.checkpoint_height = checkpoint_height;
+      heartbeat.checkpoint_hash = checkpoint_hash;
+      heartbeat.signature = "p2p-heartbeat:" + std::to_string(current_height) + ":" + std::to_string(checkpoint_height) + ":" + checkpoint_hash + ":" + masternode.id;
 
       if (!remember_masternode_heartbeat(heartbeat))
         continue;
@@ -985,6 +996,8 @@ namespace cryptonote
     proof.validator_id = arg.heartbeat.validator_id;
     proof.epoch = arg.heartbeat.epoch;
     proof.timestamp = arg.heartbeat.timestamp;
+    proof.checkpoint_height = arg.heartbeat.checkpoint_height;
+    proof.checkpoint_hash = arg.heartbeat.checkpoint_hash;
     proof.signature = arg.heartbeat.signature;
 
     std::string reason;
@@ -993,6 +1006,22 @@ namespace cryptonote
       MERROR("Dropping malformed masternode heartbeat: " << reason);
       hit_score(context, 1);
       return 1;
+    }
+
+    if (proof.checkpoint_height > 0)
+    {
+      const auto& local_checkpoints = m_core.get_checkpoints().get_points();
+      const auto local_checkpoint = local_checkpoints.find(proof.checkpoint_height);
+      if (local_checkpoint != local_checkpoints.end())
+      {
+        const std::string expected_hash = epee::string_tools::pod_to_hex(local_checkpoint->second);
+        if (proof.checkpoint_hash != expected_hash)
+        {
+          MERROR("Dropping masternode heartbeat with mismatched checkpoint claim at height " << proof.checkpoint_height);
+          hit_score(context, 1);
+          return 1;
+        }
+      }
     }
 
     if (!remember_masternode_heartbeat(arg.heartbeat))

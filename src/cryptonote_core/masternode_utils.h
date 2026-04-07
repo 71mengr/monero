@@ -8,6 +8,7 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "cryptonote_core/bonded_validator_rules.h"
 
 namespace cryptonote
 {

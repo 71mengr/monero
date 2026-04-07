@@ -7,6 +7,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
+#include "epee/string_tools.h"
 
 namespace cryptonote
 {

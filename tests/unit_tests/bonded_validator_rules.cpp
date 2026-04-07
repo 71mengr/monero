@@ -27,7 +27,7 @@ TEST(bonded_validator_rules, collateral_payload_validation)
   payload.lock_start_height = 100;
   payload.min_lock_blocks = 720;
   payload.operator_key = "operator-pubkey";
-  payload.service_endpoints = {"tcp://1.2.3.4:18080"};
+  payload.service_endpoints = {"tcp://1.2.3.4:33339"};
   payload.metadata_commitment = crypto::cn_fast_hash("meta", 4);
 
   std::string reason;
@@ -36,10 +36,10 @@ TEST(bonded_validator_rules, collateral_payload_validation)
   payload.service_endpoints = {"   "};
   ASSERT_FALSE(payload.is_valid(&reason));
 
-  payload.service_endpoints = {"tcp://1.2.3.4:18080", " tcp://1.2.3.4:18080 "};
+  payload.service_endpoints = {"tcp://1.2.3.4:33339", " tcp://1.2.3.4:33339 "};
   ASSERT_FALSE(payload.is_valid(&reason));
 
-  payload.service_endpoints = {"tcp://1.2.3.4:18080", "tcp://5.6.7.8:18080"};
+  payload.service_endpoints = {"tcp://1.2.3.4:33339", "tcp://5.6.7.8:33339"};
   ASSERT_FALSE(payload.is_valid(&reason));
 }
 

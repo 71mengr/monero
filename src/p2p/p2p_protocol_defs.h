@@ -401,4 +401,178 @@ namespace nodetool
     };
     typedef epee::misc_utils::struct_init<request_t> request;
   };
+
+  /************************************************************************/
+  /* Service network propagation                                          */
+  /************************************************************************/
+  static constexpr size_t SERVICE_NETWORK_MAX_ID = 128;
+  static constexpr size_t SERVICE_NETWORK_MAX_ENDPOINT = 256;
+  static constexpr size_t SERVICE_NETWORK_MAX_NETWORK_TYPE = 16;
+  static constexpr size_t SERVICE_NETWORK_MAX_SIGNAL = 8192;
+
+  struct service_message_entry
+  {
+    std::string service_id;
+    std::string sender;
+    std::string recipient;
+    cryptonote::blobdata payload;
+    uint64_t created_at_ms;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(service_id)
+      KV_SERIALIZE(sender)
+      KV_SERIALIZE(recipient)
+      KV_SERIALIZE(payload)
+      KV_SERIALIZE(created_at_ms)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct service_call_signal_entry
+  {
+    std::string service_id;
+    std::string call_id;
+    std::string from;
+    std::string to;
+    std::string signal_type;
+    cryptonote::blobdata signal_payload;
+    uint64_t created_at_ms;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(service_id)
+      KV_SERIALIZE(call_id)
+      KV_SERIALIZE(from)
+      KV_SERIALIZE(to)
+      KV_SERIALIZE(signal_type)
+      KV_SERIALIZE(signal_payload)
+      KV_SERIALIZE(created_at_ms)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_SERVICE_MESSAGE
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 10;
+
+    struct request_t
+    {
+      service_message_entry message;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(message)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  struct COMMAND_NOTIFY_SERVICE_CALL_SIGNAL
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 11;
+
+    struct request_t
+    {
+      service_call_signal_entry signal;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(signal)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  struct service_subscription_entry
+  {
+    std::string service_id;
+    std::string provider_endpoint;
+    std::string network_type; // ip | onion
+    std::string subscriber;
+    uint32_t months;
+    uint64_t amount_atomic;
+    uint64_t paid_until_unix;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(service_id)
+      KV_SERIALIZE(provider_endpoint)
+      KV_SERIALIZE(network_type)
+      KV_SERIALIZE(subscriber)
+      KV_SERIALIZE(months)
+      KV_SERIALIZE(amount_atomic)
+      KV_SERIALIZE(paid_until_unix)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_SERVICE_SUBSCRIPTION
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 12;
+
+    struct request_t
+    {
+      service_subscription_entry subscription;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(subscription)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  struct service_provider_entry
+  {
+    std::string payment_address;
+    std::string network_type; // ip | onion
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(payment_address)
+      KV_SERIALIZE(network_type)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_SERVICE_PROVIDER
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 13;
+
+    struct request_t
+    {
+      service_provider_entry provider;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(provider)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  struct service_access_grant_entry
+  {
+    std::string service_id;
+    std::string subscriber;
+    std::string provider_payment_address;
+    std::string access_token;
+    std::vector<std::string> allowed_networks; // ip/onion
+    uint64_t amount_atomic;
+    uint64_t valid_until_unix;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(service_id)
+      KV_SERIALIZE(subscriber)
+      KV_SERIALIZE(provider_payment_address)
+      KV_SERIALIZE(access_token)
+      KV_SERIALIZE(allowed_networks)
+      KV_SERIALIZE(amount_atomic)
+      KV_SERIALIZE(valid_until_unix)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_NOTIFY_SERVICE_ACCESS_GRANT
+  {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 14;
+
+    struct request_t
+    {
+      service_access_grant_entry grant;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(grant)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
 }

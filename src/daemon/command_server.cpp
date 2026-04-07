@@ -126,6 +126,18 @@ t_command_server::t_command_server(
     , "Print bonded-validator payment history for one id."
     );
   m_command_lookup.set_handler(
+      "service_provider_list"
+    , std::bind(&t_command_parser_executor::service_provider_list, &m_parser, p::_1)
+    , "service_provider_list"
+    , "Show service-provider discovery/pricing and consensus guard details."
+    );
+  m_command_lookup.set_handler(
+      "check_grant"
+    , std::bind(&t_command_parser_executor::check_grant, &m_parser, p::_1)
+    , "check_grant <service_id> <subscriber> <months>"
+    , "Show integration payload an app developer needs after payment confirmation."
+    );
+  m_command_lookup.set_handler(
       "tokenlist"
     , std::bind(&t_command_parser_executor::print_token_list, &m_parser, p::_1)
     , "tokenlist"

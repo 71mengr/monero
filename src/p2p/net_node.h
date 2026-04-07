@@ -256,6 +256,8 @@ namespace nodetool
         m_hide_my_port(false),
         m_igd(no_igd),
         m_offline(false),
+        m_service_provider_announced(false),
+        m_service_amount_consensus_ok(true),
         is_closing(false),
         m_network_id(),
         m_enable_dns_seed_nodes(true),
@@ -325,6 +327,11 @@ namespace nodetool
       HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, &node_server::handle_get_support_flags)
       HANDLE_NOTIFY_T2(COMMAND_NOTIFY_NEW_TOKEN, &node_server::handle_notify_new_token)
       HANDLE_NOTIFY_T2(COMMAND_NOTIFY_NEW_SMART_CONTRACT, &node_server::handle_notify_new_smart_contract)
+      HANDLE_NOTIFY_T2(COMMAND_NOTIFY_SERVICE_MESSAGE, &node_server::handle_notify_service_message)
+      HANDLE_NOTIFY_T2(COMMAND_NOTIFY_SERVICE_CALL_SIGNAL, &node_server::handle_notify_service_call_signal)
+      HANDLE_NOTIFY_T2(COMMAND_NOTIFY_SERVICE_SUBSCRIPTION, &node_server::handle_notify_service_subscription)
+      HANDLE_NOTIFY_T2(COMMAND_NOTIFY_SERVICE_PROVIDER, &node_server::handle_notify_service_provider)
+      HANDLE_NOTIFY_T2(COMMAND_NOTIFY_SERVICE_ACCESS_GRANT, &node_server::handle_notify_service_access_grant)
       CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(m_payload_handler, typename t_payload_net_handler::connection_context&)
     END_INVOKE_MAP2()
 
@@ -337,6 +344,11 @@ namespace nodetool
     int handle_get_support_flags(int command, COMMAND_REQUEST_SUPPORT_FLAGS::request& arg, COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp, p2p_connection_context& context);
     int handle_notify_new_token(int command, COMMAND_NOTIFY_NEW_TOKEN::request& arg, p2p_connection_context& context);
     int handle_notify_new_smart_contract(int command, COMMAND_NOTIFY_NEW_SMART_CONTRACT::request& arg, p2p_connection_context& context);
+    int handle_notify_service_message(int command, COMMAND_NOTIFY_SERVICE_MESSAGE::request& arg, p2p_connection_context& context);
+    int handle_notify_service_call_signal(int command, COMMAND_NOTIFY_SERVICE_CALL_SIGNAL::request& arg, p2p_connection_context& context);
+    int handle_notify_service_subscription(int command, COMMAND_NOTIFY_SERVICE_SUBSCRIPTION::request& arg, p2p_connection_context& context);
+    int handle_notify_service_provider(int command, COMMAND_NOTIFY_SERVICE_PROVIDER::request& arg, p2p_connection_context& context);
+    int handle_notify_service_access_grant(int command, COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::request& arg, p2p_connection_context& context);
     bool init_config();
     bool make_default_peer_id();
     bool make_default_config();
@@ -378,6 +390,8 @@ namespace nodetool
     bool do_handshake_with_peer(peerid_type& pi, p2p_connection_context& context, bool just_take_peerlist = false);
     bool do_peer_timed_sync(const epee::net_utils::connection_context_base& context, peerid_type peer_id);
     bool update_dns_blocklist();
+    bool announce_service_provider();
+    bool guard_subscription_amount_consensus();
 
     bool make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist);
     bool make_new_connection_from_peerlist(network_zone& zone, bool use_white_list);
@@ -525,6 +539,9 @@ namespace nodetool
 
     bool m_enable_dns_seed_nodes;
     bool m_enable_dns_blocklist;
+    std::string m_service_provider_payment_address;
+    bool m_service_provider_announced;
+    bool m_service_amount_consensus_ok;
 
     uint32_t max_connections;
   };
@@ -543,6 +560,7 @@ namespace nodetool
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_priority_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node;
+    extern const command_line::arg_descriptor<std::string> arg_be_a_service_provider;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_anonymous_inbound;
     extern const command_line::arg_descriptor<std::string> arg_ban_list;

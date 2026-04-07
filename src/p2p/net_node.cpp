@@ -147,6 +147,7 @@ namespace nodetool
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node   = {"add-exclusive-node", "Specify list of peers to connect to only."
                                                                                                   " If this option is given the options add-priority-node and seed-node are ignored"};
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node   = {"seed-node", "Connect to a node to retrieve peer addresses, and disconnect"};
+    const command_line::arg_descriptor<std::string> arg_be_a_service_provider = {"be_a_service_provider", "Register this node as a network service provider with payment address <address>", ""};
     const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy = {"tx-proxy", "Send local txes through proxy: <network-type>,<socks-ip:port>[,max_connections][,disable_noise] i.e. \"tor,127.0.0.1:9050,100,disable_noise\""};
     const command_line::arg_descriptor<std::vector<std::string> > arg_anonymous_inbound = {"anonymous-inbound", "<hidden-service-address>,<[bind-ip:]port>[,max_connections] i.e. \"x.onion,127.0.0.1:18083,100\""};
     const command_line::arg_descriptor<std::string> arg_ban_list = {"ban-list", "Specify ban list file, one IP address per line"};
@@ -316,6 +317,11 @@ namespace nodetool
         case cryptonote::NOTIFY_NEW_TRANSACTIONS::ID:
         case nodetool::COMMAND_NOTIFY_NEW_TOKEN::ID:
         case nodetool::COMMAND_NOTIFY_NEW_SMART_CONTRACT::ID:
+        case nodetool::COMMAND_NOTIFY_SERVICE_MESSAGE::ID:
+        case nodetool::COMMAND_NOTIFY_SERVICE_CALL_SIGNAL::ID:
+        case nodetool::COMMAND_NOTIFY_SERVICE_SUBSCRIPTION::ID:
+        case nodetool::COMMAND_NOTIFY_SERVICE_PROVIDER::ID:
+        case nodetool::COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::ID:
             return false;
         default:
             break;

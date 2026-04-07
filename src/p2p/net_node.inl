@@ -39,6 +39,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/algorithm/string.hpp>
 #include <atomic>
+#include <ctime>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -56,9 +57,11 @@
 #include "misc_log_ex.h"
 #include "p2p_protocol_defs.h"
 #include "crypto/crypto.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "storages/levin_abstract_invoke2.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "net/parse.h"
+#include "service_subscription/service_subscription.h"
 
 #include <miniupnp/miniupnpc/miniupnpc.h>
 #include <miniupnp/miniupnpc/upnpcommands.h>
@@ -84,6 +87,40 @@ static inline boost::asio::ip::address_v4 make_address_v4_from_v6(const boost::a
 
 namespace nodetool
 {
+  namespace
+  {
+    inline bool is_valid_service_identifier(const std::string &value, const size_t max_size)
+    {
+      if (value.empty() || value.size() > max_size)
+        return false;
+
+      for (const unsigned char c : value)
+      {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')
+          continue;
+        return false;
+      }
+
+      return true;
+    }
+
+    inline bool is_valid_service_network_type(const std::string &network_type)
+    {
+      return network_type == "ip" || network_type == "onion";
+    }
+
+    inline bool is_valid_subscription_quote(const uint32_t months, const uint64_t amount_atomic)
+    {
+      return service_subscription::is_valid_subscription_amount(months, amount_atomic);
+    }
+
+    inline std::string make_service_access_token()
+    {
+      const crypto::hash token_seed = crypto::rand<crypto::hash>();
+      return epee::string_tools::pod_to_hex(token_seed);
+    }
+  }
+
   template<class t_payload_net_handler>
   node_server<t_payload_net_handler>::~node_server()
   {
@@ -115,6 +152,7 @@ namespace nodetool
     command_line::add_arg(desc, arg_p2p_add_priority_node);
     command_line::add_arg(desc, arg_p2p_add_exclusive_node);
     command_line::add_arg(desc, arg_p2p_seed_node);
+    command_line::add_arg(desc, arg_be_a_service_provider);
     command_line::add_arg(desc, arg_tx_proxy);
     command_line::add_arg(desc, arg_anonymous_inbound);
     command_line::add_arg(desc, arg_ban_list);
@@ -609,6 +647,28 @@ namespace nodetool
 
     if ( !set_rate_limit(vm, command_line::get_arg(vm, arg_limit_rate) ) )
       return false;
+
+    m_service_provider_payment_address.clear();
+    if (command_line::has_arg(vm, arg_be_a_service_provider))
+    {
+      const std::string provider_address = command_line::get_arg(vm, arg_be_a_service_provider);
+      if (provider_address.empty())
+      {
+        MFATAL("Option --" << arg_be_a_service_provider.name << " requires a non-empty payment address");
+        return false;
+      }
+
+      cryptonote::address_parse_info info = AUTO_VAL_INIT(info);
+      if (!cryptonote::get_account_address_from_str(info, m_nettype, provider_address) || info.is_subaddress)
+      {
+        MFATAL("Option --" << arg_be_a_service_provider.name << " requires a valid primary Monero address");
+        return false;
+      }
+
+      m_service_provider_payment_address = provider_address;
+      m_service_provider_announced = false;
+      MINFO("Service provider registration enabled for payment address " << m_service_provider_payment_address);
+    }
 
 
     epee::byte_slice noise = nullptr;
@@ -2129,12 +2189,63 @@ namespace nodetool
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::idle_worker()
   {
+    guard_subscription_amount_consensus();
+    announce_service_provider();
     m_peer_handshake_idle_maker_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::peer_sync_idle_maker, this));
     m_connections_maker_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::connections_maker, this));
     m_gray_peerlist_housekeeping_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::gray_peerlist_housekeeping, this));
     m_peerlist_store_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::store_config, this));
     m_incoming_connections_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::check_incoming_connections, this));
     m_dns_blocklist_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::update_dns_blocklist, this));
+    return true;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  bool node_server<t_payload_net_handler>::guard_subscription_amount_consensus()
+  {
+    if (!m_service_amount_consensus_ok)
+      return true;
+
+    if (service_subscription::masternode_guardian_consensus_ok())
+      return true;
+
+    m_service_amount_consensus_ok = false;
+    MFATAL("Service subscription consensus guard tripped (masternode guardian). Amount table was modified; disabling service subscription acceptance.");
+    return false;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  bool node_server<t_payload_net_handler>::announce_service_provider()
+  {
+    if (!m_service_amount_consensus_ok)
+      return true;
+
+    if (m_service_provider_announced || m_service_provider_payment_address.empty())
+      return true;
+
+    COMMAND_NOTIFY_SERVICE_PROVIDER::request req = AUTO_VAL_INIT(req);
+    req.provider.payment_address = m_service_provider_payment_address;
+    req.provider.network_type = "ip";
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(req, out.buffer))
+      return false;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = epee::net_utils::zone::public_;
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK)
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (connections.empty())
+      return true;
+
+    relay_notify_to_list(COMMAND_NOTIFY_SERVICE_PROVIDER::ID, std::move(out), std::move(connections));
+    m_service_provider_announced = true;
+    MINFO("Broadcasted service provider payment address to service-network peers");
     return true;
   }
   //-----------------------------------------------------------------------------------
@@ -2788,6 +2899,247 @@ namespace nodetool
 
     if (!connections.empty())
       relay_notify_to_list(COMMAND_NOTIFY_NEW_SMART_CONTRACT::ID, std::move(out), std::move(connections));
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_service_message(int command, COMMAND_NOTIFY_SERVICE_MESSAGE::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK) == 0)
+      return 1;
+
+    const service_message_entry &message = arg.message;
+    if (!is_valid_service_identifier(message.service_id, SERVICE_NETWORK_MAX_ID) ||
+        !is_valid_service_identifier(message.sender, SERVICE_NETWORK_MAX_ENDPOINT) ||
+        !is_valid_service_identifier(message.recipient, SERVICE_NETWORK_MAX_ENDPOINT))
+    {
+      LOG_WARNING_CC(context, "Rejected invalid service message metadata");
+      return 1;
+    }
+
+    if (message.payload.empty() || message.payload.size() > SERVICE_NETWORK_MAX_SIGNAL)
+    {
+      LOG_WARNING_CC(context, "Rejected service message with invalid payload size: " << message.payload.size());
+      return 1;
+    }
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_SERVICE_MESSAGE sid=" << message.service_id
+      << " sender=" << message.sender << " recipient=" << message.recipient << " bytes=" << message.payload.size());
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_MESSAGE::ID, std::move(out), std::move(connections));
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_service_call_signal(int command, COMMAND_NOTIFY_SERVICE_CALL_SIGNAL::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK) == 0)
+      return 1;
+
+    const service_call_signal_entry &signal = arg.signal;
+    if (!is_valid_service_identifier(signal.service_id, SERVICE_NETWORK_MAX_ID) ||
+        !is_valid_service_identifier(signal.call_id, SERVICE_NETWORK_MAX_ID) ||
+        !is_valid_service_identifier(signal.from, SERVICE_NETWORK_MAX_ENDPOINT) ||
+        !is_valid_service_identifier(signal.to, SERVICE_NETWORK_MAX_ENDPOINT) ||
+        !is_valid_service_identifier(signal.signal_type, SERVICE_NETWORK_MAX_ID))
+    {
+      LOG_WARNING_CC(context, "Rejected invalid service call signal metadata");
+      return 1;
+    }
+
+    if (signal.signal_payload.empty() || signal.signal_payload.size() > SERVICE_NETWORK_MAX_SIGNAL)
+    {
+      LOG_WARNING_CC(context, "Rejected service call signal with invalid payload size: " << signal.signal_payload.size());
+      return 1;
+    }
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_SERVICE_CALL_SIGNAL sid=" << signal.service_id
+      << " call_id=" << signal.call_id << " from=" << signal.from << " to=" << signal.to
+      << " type=" << signal.signal_type << " bytes=" << signal.signal_payload.size());
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_CALL_SIGNAL::ID, std::move(out), std::move(connections));
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_service_subscription(int command, COMMAND_NOTIFY_SERVICE_SUBSCRIPTION::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK) == 0)
+      return 1;
+    if (!m_service_amount_consensus_ok)
+    {
+      LOG_ERROR_CC(context, "Rejected service subscription: amount consensus guard is not healthy");
+      return 1;
+    }
+
+    const service_subscription_entry &sub = arg.subscription;
+    if (!is_valid_service_identifier(sub.service_id, SERVICE_NETWORK_MAX_ID) ||
+        !is_valid_service_identifier(sub.subscriber, SERVICE_NETWORK_MAX_ENDPOINT) ||
+        sub.provider_endpoint.empty() || sub.provider_endpoint.size() > SERVICE_NETWORK_MAX_ENDPOINT ||
+        sub.network_type.size() > SERVICE_NETWORK_MAX_NETWORK_TYPE ||
+        !is_valid_service_network_type(sub.network_type))
+    {
+      LOG_WARNING_CC(context, "Rejected invalid service subscription metadata");
+      return 1;
+    }
+
+    if (!is_valid_subscription_quote(sub.months, sub.amount_atomic))
+    {
+      LOG_WARNING_CC(context, "Rejected service subscription with unexpected quote months=" << sub.months
+        << " amount=" << sub.amount_atomic << " atomic");
+      return 1;
+    }
+
+    const uint64_t now = static_cast<uint64_t>(time(nullptr));
+    if (sub.paid_until_unix <= now)
+    {
+      LOG_WARNING_CC(context, "Rejected expired service subscription for service_id=" << sub.service_id);
+      return 1;
+    }
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_SERVICE_SUBSCRIPTION sid=" << sub.service_id
+      << " endpoint=" << sub.provider_endpoint << " network=" << sub.network_type
+      << " subscriber=" << sub.subscriber << " months=" << sub.months
+      << " amount_atomic=" << sub.amount_atomic << " paid_until=" << sub.paid_until_unix);
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_SUBSCRIPTION::ID, std::move(out), connections);
+
+    COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::request grant_req = AUTO_VAL_INIT(grant_req);
+    grant_req.grant.service_id = sub.service_id;
+    grant_req.grant.subscriber = sub.subscriber;
+    grant_req.grant.provider_payment_address = m_service_provider_payment_address.empty() ? sub.provider_endpoint : m_service_provider_payment_address;
+    grant_req.grant.access_token = make_service_access_token();
+    grant_req.grant.allowed_networks = {"ip", "onion"};
+    grant_req.grant.amount_atomic = sub.amount_atomic;
+    grant_req.grant.valid_until_unix = sub.paid_until_unix;
+
+    epee::levin::message_writer grant_out;
+    if (epee::serialization::store_t_to_binary(grant_req, grant_out.buffer) && !connections.empty())
+    {
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::ID, std::move(grant_out), std::move(connections));
+      LOG_INFO_CC(context, "Generated service access grant for subscriber=" << sub.subscriber
+        << " valid_until=" << sub.paid_until_unix << " allowed=ip,onion");
+    }
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_service_provider(int command, COMMAND_NOTIFY_SERVICE_PROVIDER::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK) == 0)
+      return 1;
+
+    const service_provider_entry &provider = arg.provider;
+    if (provider.payment_address.empty() || provider.payment_address.size() > 128 ||
+        provider.network_type.size() > SERVICE_NETWORK_MAX_NETWORK_TYPE ||
+        !is_valid_service_network_type(provider.network_type))
+    {
+      LOG_WARNING_CC(context, "Rejected invalid service provider registration");
+      return 1;
+    }
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_SERVICE_PROVIDER payment_address=" << provider.payment_address
+      << " network_type=" << provider.network_type);
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_PROVIDER::ID, std::move(out), std::move(connections));
+
+    return 1;
+  }
+  //-----------------------------------------------------------------------------------
+  template<class t_payload_net_handler>
+  int node_server<t_payload_net_handler>::handle_notify_service_access_grant(int command, COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::request& arg, p2p_connection_context& context)
+  {
+    if ((context.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK) == 0)
+      return 1;
+
+    const service_access_grant_entry &grant = arg.grant;
+    if (!is_valid_service_identifier(grant.service_id, SERVICE_NETWORK_MAX_ID) ||
+        !is_valid_service_identifier(grant.subscriber, SERVICE_NETWORK_MAX_ENDPOINT) ||
+        grant.provider_payment_address.empty() || grant.access_token.empty() ||
+        grant.allowed_networks.empty() || grant.valid_until_unix <= static_cast<uint64_t>(time(nullptr)))
+    {
+      LOG_WARNING_CC(context, "Rejected invalid service access grant");
+      return 1;
+    }
+
+    LOG_DEBUG_CC(context, "COMMAND_NOTIFY_SERVICE_ACCESS_GRANT sid=" << grant.service_id
+      << " subscriber=" << grant.subscriber << " valid_until=" << grant.valid_until_unix);
+
+    epee::levin::message_writer out;
+    if (!epee::serialization::store_t_to_binary(arg, out.buffer))
+      return 1;
+
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
+    const auto zone = context.m_remote_address.get_zone();
+    m_network_zones.at(zone).m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    {
+      if (cntxt.m_connection_id != context.m_connection_id && (cntxt.support_flags & P2P_SUPPORT_FLAG_SERVICE_NETWORK))
+        connections.push_back(std::make_pair(zone, cntxt.m_connection_id));
+      return true;
+    });
+
+    if (!connections.empty())
+      relay_notify_to_list(COMMAND_NOTIFY_SERVICE_ACCESS_GRANT::ID, std::move(out), std::move(connections));
 
     return 1;
   }

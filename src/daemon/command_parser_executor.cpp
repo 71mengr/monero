@@ -30,6 +30,7 @@
 #include "common/command_line.h"
 #include "net/parse.h"
 #include "daemon/command_parser_executor.h"
+#include "service_subscription/service_subscription.h"
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -336,6 +337,62 @@ bool t_command_parser_executor::print_masternode_payments(const std::vector<std:
   }
 
   return m_executor.print_masternode_payments(args[0], from_height, to_height);
+}
+
+bool t_command_parser_executor::service_provider_list(const std::vector<std::string>& args)
+{
+  if (!args.empty())
+  {
+    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  std::cout << "service_provider_list (mainnet/testnet enabled)" << std::endl;
+  std::cout << "  Discovery source: P2P service-provider announcements (COMMAND_NOTIFY_SERVICE_PROVIDER)." << std::endl;
+  std::cout << "  Local providers can be announced via: ./monerod --be_a_service_provider <address>" << std::endl;
+  std::cout << "  Pricing consensus:" << std::endl;
+  std::cout << "    1 month  = " << service_subscription::one_month_amount_atomic / COIN << " XMR" << std::endl;
+  std::cout << "    2 months = " << service_subscription::two_months_amount_atomic / COIN << " XMR" << std::endl;
+  std::cout << "    12 months= " << service_subscription::one_year_amount_atomic / COIN << " XMR" << std::endl;
+  std::cout << "  Masternode guardian checksum: " << service_subscription::consensus_checksum() << std::endl;
+  return true;
+}
+
+bool t_command_parser_executor::check_grant(const std::vector<std::string>& args)
+{
+  if (args.size() != 3)
+  {
+    std::cout << "Invalid syntax: check_grant <service_id> <subscriber> <months>. For more details, use the help command." << std::endl;
+    return true;
+  }
+
+  uint32_t months = 0;
+  if (!epee::string_tools::get_xtype_from_string(months, args[2]) || !service_subscription::has_supported_duration(months))
+  {
+    std::cout << "Invalid syntax: <months> must be one of 1, 2, 12." << std::endl;
+    return true;
+  }
+
+  uint64_t amount_atomic = 0;
+  if (months == service_subscription::one_month)
+    amount_atomic = service_subscription::one_month_amount_atomic;
+  else if (months == service_subscription::two_months)
+    amount_atomic = service_subscription::two_months_amount_atomic;
+  else
+    amount_atomic = service_subscription::one_year_amount_atomic;
+
+  std::cout << "Grant integration payload (for app developer):" << std::endl;
+  std::cout << "{" << std::endl;
+  std::cout << "  \"service_id\": \"" << args[0] << "\"," << std::endl;
+  std::cout << "  \"subscriber\": \"" << args[1] << "\"," << std::endl;
+  std::cout << "  \"required_amount_atomic\": " << amount_atomic << "," << std::endl;
+  std::cout << "  \"required_amount_xmr\": " << (amount_atomic / COIN) << "," << std::endl;
+  std::cout << "  \"allowed_networks\": [\"ip\", \"onion\"]," << std::endl;
+  std::cout << "  \"p2p_commands\": [\"COMMAND_NOTIFY_SERVICE_SUBSCRIPTION\", \"COMMAND_NOTIFY_SERVICE_ACCESS_GRANT\"]," << std::endl;
+  std::cout << "  \"note\": \"After payment confirmation, consume access_token from COMMAND_NOTIFY_SERVICE_ACCESS_GRANT.\""<< std::endl;
+  std::cout << "}" << std::endl;
+
+  return true;
 }
 
 bool t_command_parser_executor::print_token_list(const std::vector<std::string>& args)

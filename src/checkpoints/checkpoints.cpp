@@ -32,11 +32,20 @@
 
 #include "common/dns_utils.h"
 #include "string_tools.h"
+#include "net/http_client.h"
+#include "net/parse.h"
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
 #include <boost/system/error_code.hpp>
 #include <boost/filesystem.hpp>
+#include <algorithm>
+#include <chrono>
+#include <cctype>
+#include <cstring>
+#include <cstdlib>
 #include <functional>
+#include <fstream>
+#include <sstream>
 #include <vector>
 
 using namespace epee;
@@ -46,6 +55,146 @@ using namespace epee;
 
 namespace cryptonote
 {
+  namespace
+  {
+    static bool parse_checkpoint_line(const std::string &line, uint64_t &height, std::string &hash)
+    {
+      const auto begin = line.find_first_not_of(" \t\r");
+      if (begin == std::string::npos || line[begin] == '#')
+        return false;
+
+      const auto end = line.find_last_not_of(" \t\r");
+      const std::string trimmed = line.substr(begin, end - begin + 1);
+
+      size_t separator = trimmed.find(',');
+      if (separator == std::string::npos)
+        separator = trimmed.find(':');
+      if (separator == std::string::npos)
+      {
+        for (size_t i = 0; i < trimmed.size(); ++i)
+        {
+          if (std::isspace(static_cast<unsigned char>(trimmed[i])))
+          {
+            separator = i;
+            break;
+          }
+        }
+      }
+      if (separator == std::string::npos)
+        return false;
+
+      const auto hash_begin = trimmed.find_first_not_of(" \t", separator + 1);
+      if (hash_begin == std::string::npos)
+        return false;
+      const std::string height_str = trimmed.substr(0, separator);
+      std::string hash_str = trimmed.substr(hash_begin);
+      hash_str.erase(std::find_if(hash_str.rbegin(), hash_str.rend(),
+        [](unsigned char c){ return !std::isspace(c); }).base(), hash_str.end());
+
+      std::stringstream ss(height_str);
+      if (!(ss >> height) || !ss.eof())
+        return false;
+
+      crypto::hash h;
+      if (!epee::string_tools::hex_to_pod(hash_str, h))
+        return false;
+
+      std::transform(hash_str.begin(), hash_str.end(), hash_str.begin(),
+        [](unsigned char c){ return std::tolower(c); });
+      hash = std::move(hash_str);
+      return true;
+    }
+
+    static bool load_checkpoints_from_text(const std::string &text, std::vector<std::string> &records)
+    {
+      std::istringstream input(text);
+      std::string line;
+      while (std::getline(input, line))
+      {
+        uint64_t height = 0;
+        std::string hash;
+        if (!parse_checkpoint_line(line, height, hash))
+          continue;
+        records.emplace_back(std::to_string(height) + ":" + hash);
+      }
+      return !records.empty();
+    }
+
+    static bool load_checkpoints_from_custom_source(const std::string &source, std::vector<std::string> &records)
+    {
+      std::string body;
+      const bool has_scheme = source.rfind("http://", 0) == 0 || source.rfind("https://", 0) == 0;
+      const bool file_exists = boost::filesystem::exists(source);
+      if (has_scheme || !file_exists)
+      {
+        std::string url = source;
+        if (!has_scheme)
+        {
+          url = "http://" + source;
+          if (url.find('/', strlen("http://")) == std::string::npos)
+            url += "/dns.txt";
+        }
+
+        epee::net_utils::http::url_content u_c;
+        if (!epee::net_utils::parse_url(url, u_c) || u_c.host.empty())
+        {
+          MERROR("Failed to parse custom checkpoints source URL: " << source);
+          return false;
+        }
+
+        const auto ssl = u_c.schema == "https" ?
+          epee::net_utils::ssl_support_t::e_ssl_support_enabled :
+          epee::net_utils::ssl_support_t::e_ssl_support_disabled;
+        const uint16_t port = u_c.port ? u_c.port : (ssl == epee::net_utils::ssl_support_t::e_ssl_support_enabled ? 443 : 80);
+
+        epee::net_utils::http::http_simple_client client;
+        client.set_server(u_c.host, std::to_string(port), boost::none, ssl);
+        if (!client.connect(std::chrono::seconds(30)))
+        {
+          MERROR("Failed to connect to custom checkpoints source URL: " << url);
+          return false;
+        }
+
+        const epee::net_utils::http::http_response_info *info = nullptr;
+        if (!client.invoke_get(u_c.uri.empty() ? "/" : u_c.uri, std::chrono::seconds(30), "", &info) || !info)
+        {
+          MERROR("Failed to fetch custom checkpoints source URL: " << url);
+          client.disconnect();
+          return false;
+        }
+
+        if (info->m_response_code != 200)
+        {
+          MERROR("Custom checkpoints source returned HTTP status " << info->m_response_code << " from " << url);
+          client.disconnect();
+          return false;
+        }
+
+        body = info->m_body;
+        client.disconnect();
+      }
+      else
+      {
+        std::ifstream file(source);
+        if (!file.good())
+        {
+          MERROR("Failed to open custom checkpoints source file: " << source);
+          return false;
+        }
+        std::ostringstream content;
+        content << file.rdbuf();
+        body = content.str();
+      }
+
+      if (!load_checkpoints_from_text(body, records))
+      {
+        MERROR("Custom checkpoints source has no valid checkpoint entries: " << source);
+        return false;
+      }
+      return true;
+    }
+  }
+
   /**
    * @brief struct for loading a checkpoint from json
    */
@@ -235,19 +384,26 @@ namespace cryptonote
   bool checkpoints::load_checkpoints_from_dns(network_type nettype)
   {
     std::vector<std::string> records;
+    const char *custom_source = std::getenv("MONERO_DNS_CHECKPOINTS_SOURCE");
+    if (custom_source && custom_source[0] != '\0')
+    {
+      MINFO("Loading checkpoints from custom source: " << custom_source);
+      if (!load_checkpoints_from_custom_source(custom_source, records))
+        return false;
+    }
+    else
+    {
+      static const std::vector<std::string> dns_urls = { "checkpoints.moneropulse.se"
+                               , "checkpoints.moneropulse.org"
+                               , "checkpoints.moneropulse.net"
+                               , "checkpoints.moneropulse.co"
+      };
 
-    // All four MoneroPulse domains have DNSSEC on and valid
-    static const std::vector<std::string> dns_urls = { "checkpoints.moneropulse.se"
-						     , "checkpoints.moneropulse.org"
-						     , "checkpoints.moneropulse.net"
-						     , "checkpoints.moneropulse.co"
-    };
-
-    static const std::vector<std::string> testnet_dns_urls = { "testpoints.moneropulse.se"
-							     , "testpoints.moneropulse.org"
-							     , "testpoints.moneropulse.net"
-							     , "testpoints.moneropulse.co"
-    };
+      static const std::vector<std::string> testnet_dns_urls = { "testpoints.moneropulse.se"
+                                   , "testpoints.moneropulse.org"
+                                   , "testpoints.moneropulse.net"
+                                   , "testpoints.moneropulse.co"
+      };
 
     static const std::vector<std::string> stagenet_dns_urls = { "stagenetpoints.moneropulse.se"
                    , "stagenetpoints.moneropulse.org"
@@ -255,8 +411,9 @@ namespace cryptonote
                    , "stagenetpoints.moneropulse.co"
     };
 
-    if (!tools::dns_utils::load_txt_records_from_dns(records, nettype == TESTNET ? testnet_dns_urls : nettype == STAGENET ? stagenet_dns_urls : dns_urls))
-      return true; // why true ?
+      if (!tools::dns_utils::load_txt_records_from_dns(records, nettype == TESTNET ? testnet_dns_urls : nettype == STAGENET ? stagenet_dns_urls : dns_urls))
+        return true; // why true ?
+    }
 
     for (const auto& record : records)
     {

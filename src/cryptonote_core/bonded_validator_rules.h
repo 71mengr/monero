@@ -10,6 +10,7 @@
 #include "cryptonote_config.h"
 #include "serialization/keyvalue_serialization.h"
 #include "serialization/serialization.h"
+#include "serialization/string.h"
 
 namespace cryptonote
 {

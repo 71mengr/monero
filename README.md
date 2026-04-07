@@ -16,6 +16,7 @@ Portions Copyright (c) 2012-2013 The Cryptonote developers.
   - [Supporting the project](#supporting-the-project)
   - [License](#license)
   - [Contributing](#contributing)
+  - [AI assistant for project explanations](#ai-assistant-for-project-explanations)
   - [Scheduled software upgrades](#scheduled-software-upgrades)
   - [Release staging schedule and protocol](#release-staging-schedule-and-protocol)
   - [Compiling Monero from source](#compiling-monero-from-source)
@@ -116,6 +117,28 @@ See [LICENSE](LICENSE).
 ## Contributing
 
 If you want to help out, see [CONTRIBUTING](docs/CONTRIBUTING.md) for a set of guidelines.
+
+## AI assistant for project explanations
+
+This repository now includes a lightweight, dependency-free conversational helper in `utils/monero_ai_assistant.py`.
+
+Use it to:
+
+- explain what this project is about
+- answer basic questions about privacy, security, decentralization, and contributing
+- interact with users in a simple chat loop
+
+Run in interactive mode:
+
+```bash
+python3 utils/monero_ai_assistant.py
+```
+
+Run in single-message mode:
+
+```bash
+python3 utils/monero_ai_assistant.py --message "What is this project?"
+```
 
 ## Scheduled software upgrades
 

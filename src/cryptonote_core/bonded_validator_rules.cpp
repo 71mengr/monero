@@ -9,6 +9,8 @@
 
 namespace
 {
+  constexpr uint64_t CHAINLOCK_INTERVAL_BLOCKS = 1000;
+
   template <typename T>
   bool add_overflow(T a, T b, T& out)
   {
@@ -71,6 +73,33 @@ namespace cryptonote
     return true;
   }
 
+  bool consensus_confirms_chainlock(
+      const chainlock_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      std::string* reason)
+  {
+    if (!proof.is_well_formed(1, reason))
+      return false;
+
+    if (confirming_validator_ids.size() < min_confirmations)
+    {
+      if (reason) *reason = "not enough validator confirmations for chainlock";
+      return false;
+    }
+
+    for (const auto& validator_id : confirming_validator_ids)
+    {
+      if (!non_empty_trimmed(validator_id))
+      {
+        if (reason) *reason = "confirming validator ids must be non-empty";
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   bool mainnet_consensus_confirms_instant_deregistration(
       network_type nettype,
       uint8_t hf_version,
@@ -93,6 +122,41 @@ namespace cryptonote
         allow_self_confirmation,
         reason);
   }
+
+  bool mainnet_consensus_confirms_chainlock(
+      network_type nettype,
+      uint8_t hf_version,
+      const chainlock_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      std::string* reason)
+  {
+    if (!bonded_validator_registration_tier_is_enabled(nettype, hf_version))
+    {
+      if (reason) *reason = "chainlock consensus is only enabled on mainnet after validator registration activation";
+      return false;
+    }
+
+    return consensus_confirms_chainlock(
+        proof,
+        confirming_validator_ids,
+        min_confirmations,
+        reason);
+  }
+
+  bool chainlock_conflicts_with_observed_history(
+      uint64_t height,
+      const std::string& block_hash,
+      const std::vector<std::pair<uint64_t, std::string>>& observed_chainlocks)
+  {
+    for (const auto& observed : observed_chainlocks)
+    {
+      if (observed.first == height)
+        return observed.second != block_hash;
+    }
+    return false;
+  }
+
   bool bonded_validator_reward_tier_is_enabled(
       network_type nettype,
       uint8_t hf_version)
@@ -280,6 +344,49 @@ namespace cryptonote
     {
       if (reason) *reason = "signature missing";
       return false;
+    }
+    return true;
+  }
+
+  bool chainlock_proof::is_well_formed(size_t min_signatures, std::string* reason) const
+  {
+    if (height == 0)
+    {
+      if (reason) *reason = "chainlock height must be > 0";
+      return false;
+    }
+    if ((height % CHAINLOCK_INTERVAL_BLOCKS) != 0)
+    {
+      if (reason) *reason = "chainlock height must be aligned to 1000-block intervals";
+      return false;
+    }
+    if (!non_empty_trimmed(block_hash))
+    {
+      if (reason) *reason = "chainlock block hash missing";
+      return false;
+    }
+    if (quorum_epoch == 0)
+    {
+      if (reason) *reason = "chainlock quorum epoch must be > 0";
+      return false;
+    }
+    if (!signatures_are_canonical_and_unique(signatures))
+    {
+      if (reason) *reason = "signatures must be non-empty, unique, and lexicographically sorted";
+      return false;
+    }
+    if (signatures.size() < min_signatures)
+    {
+      if (reason) *reason = "not enough signatures";
+      return false;
+    }
+    for (const auto& signature : signatures)
+    {
+      if (!non_empty_trimmed(signature))
+      {
+        if (reason) *reason = "empty signature not allowed";
+        return false;
+      }
     }
     return true;
   }

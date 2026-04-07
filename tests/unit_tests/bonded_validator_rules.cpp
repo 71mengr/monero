@@ -508,3 +508,82 @@ TEST(bonded_validator_rules, instant_deregistration_consensus_is_mainnet_gated)
       true,
       &reason)) << reason;
 }
+
+TEST(bonded_validator_rules, chainlock_proof_requires_masternode_quorum)
+{
+  cryptonote::chainlock_proof proof{};
+  proof.height = 1000;
+  proof.block_hash = "000000000000chainlock";
+  proof.quorum_epoch = 22;
+  proof.signatures = {"sig-a", "sig-b"};
+
+  std::string reason;
+  std::unordered_set<std::string> quorum{"validator-1", "validator-2"};
+  ASSERT_TRUE(cryptonote::consensus_confirms_chainlock(proof, quorum, 2, &reason)) << reason;
+
+  std::unordered_set<std::string> below_threshold{"validator-1"};
+  ASSERT_FALSE(cryptonote::consensus_confirms_chainlock(proof, below_threshold, 2, &reason));
+}
+
+TEST(bonded_validator_rules, chainlock_consensus_is_mainnet_gated)
+{
+  cryptonote::chainlock_proof proof{};
+  proof.height = 2000;
+  proof.block_hash = "000000000000chainlock-mainnet";
+  proof.quorum_epoch = 11;
+  proof.signatures = {"sig-a", "sig-b"};
+
+  std::unordered_set<std::string> quorum{"validator-1", "validator-2"};
+  std::string reason;
+
+  ASSERT_FALSE(cryptonote::mainnet_consensus_confirms_chainlock(
+      cryptonote::TESTNET,
+      HF_MN_REG,
+      proof,
+      quorum,
+      2,
+      &reason));
+
+  ASSERT_FALSE(cryptonote::mainnet_consensus_confirms_chainlock(
+      cryptonote::MAINNET,
+      HF_MN_REG - 1,
+      proof,
+      quorum,
+      2,
+      &reason));
+
+  ASSERT_TRUE(cryptonote::mainnet_consensus_confirms_chainlock(
+      cryptonote::MAINNET,
+      HF_MN_REG,
+      proof,
+      quorum,
+      2,
+      &reason)) << reason;
+}
+
+TEST(bonded_validator_rules, chainlock_proof_requires_1000_block_alignment)
+{
+  cryptonote::chainlock_proof proof{};
+  proof.height = 1999;
+  proof.block_hash = "000000000000chainlock-bad";
+  proof.quorum_epoch = 44;
+  proof.signatures = {"sig-a"};
+
+  std::string reason;
+  ASSERT_FALSE(proof.is_well_formed(1, &reason));
+
+  proof.height = 2000;
+  ASSERT_TRUE(proof.is_well_formed(1, &reason)) << reason;
+}
+
+TEST(bonded_validator_rules, chainlock_history_rejects_block_change_at_locked_height)
+{
+  const std::vector<std::pair<uint64_t, std::string>> observed_chainlocks{
+      {1000, "hash-A"},
+      {2000, "hash-B"},
+  };
+
+  ASSERT_FALSE(cryptonote::chainlock_conflicts_with_observed_history(1000, "hash-A", observed_chainlocks));
+  ASSERT_TRUE(cryptonote::chainlock_conflicts_with_observed_history(1000, "hash-C", observed_chainlocks));
+  ASSERT_FALSE(cryptonote::chainlock_conflicts_with_observed_history(3000, "hash-Z", observed_chainlocks));
+}

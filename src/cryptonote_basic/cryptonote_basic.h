@@ -461,6 +461,7 @@ namespace cryptonote
     uint64_t timestamp;
     crypto::hash  prev_id;
     uint32_t nonce;
+    crypto::hash  chainlock;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(major_version)
@@ -468,6 +469,10 @@ namespace cryptonote
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
       FIELD(nonce)
+      if (major_version >= HF_MN_REG)
+        FIELD(chainlock)
+      else if (!typename Archive<W>::is_saving())
+        chainlock = crypto::null_hash;
     END_SERIALIZE()
   };
 

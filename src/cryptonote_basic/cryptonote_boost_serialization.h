@@ -196,6 +196,10 @@ namespace boost
     a & b.timestamp;
     a & b.prev_id;
     a & b.nonce;
+    if (b.major_version >= HF_MN_REG)
+      a & b.chainlock;
+    else
+      b.chainlock = crypto::null_hash;
     //------------------
     a & b.miner_tx;
     a & b.tx_hashes;

@@ -149,6 +149,16 @@ namespace cryptonote
     bool is_well_formed(std::string* reason = nullptr) const;
   };
 
+  struct chainlock_proof
+  {
+    uint64_t height = 0;
+    std::string block_hash;
+    uint64_t quorum_epoch = 0;
+    std::vector<std::string> signatures;
+
+    bool is_well_formed(size_t min_signatures, std::string* reason = nullptr) const;
+  };
+
   std::vector<bonded_validator_info> select_active_validator_set(
       const std::vector<bonded_validator_info>& validators,
       uint64_t epoch,
@@ -224,6 +234,25 @@ namespace cryptonote
       size_t min_confirmations,
       bool allow_self_confirmation,
       std::string* reason = nullptr);
+
+  bool consensus_confirms_chainlock(
+      const chainlock_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      std::string* reason = nullptr);
+
+  bool mainnet_consensus_confirms_chainlock(
+      network_type nettype,
+      uint8_t hf_version,
+      const chainlock_proof& proof,
+      const std::unordered_set<std::string>& confirming_validator_ids,
+      size_t min_confirmations,
+      std::string* reason = nullptr);
+
+  bool chainlock_conflicts_with_observed_history(
+      uint64_t height,
+      const std::string& block_hash,
+      const std::vector<std::pair<uint64_t, std::string>>& observed_chainlocks);
 
   bool bonded_validator_reward_tier_is_enabled(
       network_type nettype,

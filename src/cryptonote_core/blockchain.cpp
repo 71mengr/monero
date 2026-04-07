@@ -1714,6 +1714,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  static constexpr uint64_t CHAINLOCK_INTERVAL_BLOCKS = 1000;
 
   m_timestamps_and_difficulties_height = 0;
   m_reset_timestamps_and_difficulties_height = true;
@@ -1726,6 +1727,48 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   {
     LOG_ERROR("Attempting to move to an alternate chain, but it doesn't appear to connect to the main chain!");
     return false;
+  }
+
+  // Chainlocks are immutable checkpoints: if an alternate chain attempts to replace a
+  // locked-height block (every 1000 blocks), reject the reorg before any detach.
+  const uint64_t current_height = m_db->height();
+  const uint64_t first_rewritten_height = alt_chain.front().height;
+  if (current_height > 0 && first_rewritten_height < current_height)
+  {
+    std::vector<std::pair<uint64_t, std::string>> observed_chainlocks;
+    for (uint64_t height = first_rewritten_height; height < current_height; ++height)
+    {
+      if (height == 0 || (height % CHAINLOCK_INTERVAL_BLOCKS) != 0)
+        continue;
+
+      const block locked_block = m_db->get_block_from_height(height);
+      if (locked_block.chainlock == crypto::null_hash)
+      {
+        MERROR("Refusing reorg/sync: chainlock missing at locked height " << height);
+        return false;
+      }
+
+      observed_chainlocks.emplace_back(height, epee::string_tools::pod_to_hex(locked_block.chainlock));
+    }
+
+    for (const auto& bei : alt_chain)
+    {
+      if (bei.height == 0 || (bei.height % CHAINLOCK_INTERVAL_BLOCKS) != 0)
+        continue;
+
+      if (bei.bl.chainlock == crypto::null_hash)
+      {
+        MERROR("Rejected alternative chain: missing chainlock at locked height " << bei.height);
+        return false;
+      }
+
+      const std::string alt_chainlock = epee::string_tools::pod_to_hex(bei.bl.chainlock);
+      if (chainlock_conflicts_with_observed_history(bei.height, alt_chainlock, observed_chainlocks))
+      {
+        MERROR("Rejected alternative chain: chainlock conflict at height " << bei.height);
+        return false;
+      }
+    }
   }
 
   // pop blocks from the blockchain until the top block is the parent
@@ -2241,6 +2284,14 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     }
   }
   b.timestamp = time(NULL);
+  b.chainlock = crypto::null_hash;
+  if (bonded_validator_registration_tier_is_enabled(m_nettype, b.major_version) &&
+      height != 0 &&
+      (height % 1000) == 0)
+  {
+    // Locked heights carry a deterministic non-null chainlock in the header.
+    b.chainlock = b.prev_id;
+  }
 
   uint64_t median_ts;
   if (!check_block_timestamp(b, median_ts))
@@ -4829,6 +4880,24 @@ leave:
     MERROR_VER("Block with id: " << id << std::endl << "has old version: " << (unsigned)bl.major_version << std::endl << "current: " << (unsigned)hf_version);
     bvc.m_verifivation_failed = true;
     goto leave;
+  }
+
+  if (bonded_validator_registration_tier_is_enabled(m_nettype, hf_version) &&
+      (blockchain_height % 1000) == 0)
+  {
+    if (bl.chainlock == crypto::null_hash)
+    {
+      MERROR_VER("Block with id: " << id << " is missing required chainlock header at locked height " << blockchain_height << "; refusing to sync.");
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    if (bl.chainlock != bl.prev_id)
+    {
+      MERROR_VER("Block with id: " << id << " has invalid chainlock header at locked height " << blockchain_height << "; expected prev_id anchor.");
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
   }
 
   TIME_MEASURE_FINISH(t1);

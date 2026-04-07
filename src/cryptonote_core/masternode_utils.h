@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 
 namespace cryptonote

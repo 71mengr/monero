@@ -34,6 +34,7 @@ set(cryptonote_core_sources
   cryptonote_tx_utils.cpp
   tx_verification_utils.cpp
   bonded_validator_rules.cpp
+  masternode_utils.cpp
 )
 
 set(cryptonote_core_headers)

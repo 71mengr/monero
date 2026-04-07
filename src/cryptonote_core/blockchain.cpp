@@ -64,6 +64,7 @@
 #include "common/pruning.h"
 #include "common/mvm.h"
 #include "bonded_validator_rules.h"
+#include "masternode_utils.h"
 #include "common/data_cache.h"
 #include "time_helper.h"
 #include "serialization/binary_utils.h"
@@ -99,172 +100,12 @@ namespace
 {
 constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
 constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = (30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;
-constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "monero-masternode-registration-v2";
 constexpr uint32_t MASTERNODE_DUTY_MISSED_THRESHOLD = 10;
 constexpr uint32_t MASTERNODE_DEREGISTER_PENALTY_POINTS = 25;
 constexpr size_t MASTERNODE_ACTIVE_SET_SIZE = 64;
 constexpr uint64_t MASTERNODE_ACTIVE_SET_MIN_COLLATERAL = MASTERNODE_COLLATERAL_EXACT_AMOUNT;
 constexpr uint64_t MASTERNODE_MIN_REMAINING_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS / 2;
 constexpr uint64_t MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
-
-std::string make_masternode_collateral_outpoint_key(const cryptonote::masternode_collateral_outpoint& collateral_outpoint)
-{
-  return epee::string_tools::pod_to_hex(collateral_outpoint.txid) + ":" + std::to_string(collateral_outpoint.vout);
-}
-
-bool make_masternode_registration_signature_hash(
-    const cryptonote::masternode_registration_payload& registration,
-    const crypto::hash& tx_hash,
-    const cryptonote::network_type nettype,
-    crypto::hash& signature_hash)
-{
-  cryptonote::masternode_registration_payload unsigned_payload = registration;
-  unsigned_payload.operator_signature = crypto::signature{};
-
-  cryptonote::blobdata payload_blob;
-  if (!t_serializable_object_to_blob(unsigned_payload, payload_blob))
-    return false;
-
-  std::string preimage;
-  preimage.reserve(sizeof(MASTERNODE_REGISTRATION_SIG_DOMAIN) + sizeof(get_config(nettype).NETWORK_ID.data) + sizeof(tx_hash) + sizeof(registration.version) + payload_blob.size());
-  preimage.append(MASTERNODE_REGISTRATION_SIG_DOMAIN, sizeof(MASTERNODE_REGISTRATION_SIG_DOMAIN) - 1);
-  preimage.append(reinterpret_cast<const char*>(get_config(nettype).NETWORK_ID.data), sizeof(get_config(nettype).NETWORK_ID.data));
-  preimage.append(reinterpret_cast<const char*>(&tx_hash), sizeof(tx_hash));
-  preimage.push_back(static_cast<char>(registration.version));
-  preimage.append(payload_blob);
-  signature_hash = crypto::cn_fast_hash(preimage.data(), preimage.size());
-  return true;
-}
-
-bool validate_masternode_registration_rules_for_block(
-    const std::vector<std::pair<cryptonote::transaction, cryptonote::blobdata>>& txs,
-    const std::unordered_map<std::string, std::string>& by_operator_key,
-    const std::unordered_map<std::string, std::string>& by_collateral_outpoint,
-    cryptonote::BlockchainDB& db,
-    const cryptonote::network_type nettype,
-    const uint64_t block_height)
-{
-  std::unordered_set<std::string> seen_operator_keys;
-  for (const auto& kv : by_operator_key)
-    seen_operator_keys.insert(kv.first);
-  std::unordered_set<std::string> seen_collateral_outpoints;
-  for (const auto& kv : by_collateral_outpoint)
-    seen_collateral_outpoints.insert(kv.first);
-
-  for (const auto& tx_entry : txs)
-  {
-    const auto& tx = tx_entry.first;
-    std::vector<cryptonote::tx_extra_field> tx_extra_fields;
-    if (!cryptonote::parse_tx_extra(tx.extra, tx_extra_fields))
-      return false;
-
-    size_t registration_count = 0;
-    cryptonote::masternode_registration_payload registration{};
-    for (const auto& field : tx_extra_fields)
-    {
-      if (field.type() != typeid(cryptonote::tx_extra_masternode_registration))
-        continue;
-      ++registration_count;
-      registration = boost::get<cryptonote::tx_extra_masternode_registration>(field).registration;
-    }
-
-    if (registration_count == 0)
-      continue;
-    if (registration_count > 1 || !cryptonote::check_masternode_registration_payload(registration))
-      return false;
-
-    const crypto::hash tx_hash = get_transaction_hash(tx);
-    const std::string operator_key = epee::string_tools::pod_to_hex(registration.operator_pubkey);
-    const std::string collateral_outpoint = make_masternode_collateral_outpoint_key(registration.collateral_outpoint);
-
-    // (a) canonical/structural checks
-    if (registration.version != cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION)
-      return false;
-    if (!crypto::check_key(registration.operator_pubkey))
-      return false;
-    if (registration.service_endpoint_commitment == crypto::null_hash)
-      return false;
-
-    // (b) uniqueness checks against resulting state and within block
-    if (seen_operator_keys.count(operator_key) > 0)
-      return false;
-    if (seen_collateral_outpoints.count(collateral_outpoint) > 0)
-      return false;
-
-    transaction collateral_tx{};
-    if (!db.get_tx(registration.collateral_outpoint.txid, collateral_tx))
-      return false;
-    if (registration.collateral_outpoint.vout >= collateral_tx.vout.size())
-      return false;
-
-    // (c.i) exact collateral amount
-    if (registration.collateral_amount != MASTERNODE_COLLATERAL_EXACT_AMOUNT)
-      return false;
-    if (collateral_tx.vout[registration.collateral_outpoint.vout].amount != registration.collateral_amount)
-      return false;
-
-    // (c.ii) lock/unlock semantics: collateral must be block-height locked at least one month from registration
-    if (collateral_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER)
-      return false;
-    if (block_height > std::numeric_limits<uint64_t>::max() - MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS)
-      return false;
-    const uint64_t min_lock_height = block_height + MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS;
-    if (collateral_tx.unlock_time < min_lock_height)
-      return false;
-
-    // (c.iii) maturity (if required)
-    const uint64_t collateral_height = db.get_tx_block_height(registration.collateral_outpoint.txid);
-    if (collateral_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE > block_height)
-      return false;
-
-    // (d/e) signature domain separation + replay protection via chain-id + tx hash binding
-    crypto::hash signing_hash{};
-    if (!make_masternode_registration_signature_hash(registration, tx_hash, nettype, signing_hash))
-      return false;
-    if (!crypto::check_signature(signing_hash, registration.operator_pubkey, registration.operator_signature))
-      return false;
-
-    // (f) state transition validity: registration tx cannot update/replace an existing active record.
-    seen_operator_keys.insert(operator_key);
-    seen_collateral_outpoints.insert(collateral_outpoint);
-  }
-
-  return true;
-}
-
-bool serialize_masternode_blob(const cryptonote::bonded_validator_info& masternode, cryptonote::blobdata& blob)
-{
-  return cryptonote::t_serializable_object_to_blob(masternode, blob);
-}
-
-cryptonote::p2p_masternode_info make_p2p_masternode_info(const cryptonote::bonded_validator_info& masternode)
-{
-  cryptonote::p2p_masternode_info result{};
-  result.id = masternode.id;
-  result.operator_key = masternode.operator_key;
-  result.collateral_txid = masternode.collateral_txid;
-  result.collateral_amount = masternode.collateral_amount;
-  result.registration_height = masternode.registration_height;
-  result.lock_end_height = masternode.lock_end_height;
-  result.last_uptime_proof_height = masternode.last_uptime_proof_height;
-  result.missed_duties = masternode.missed_duties;
-  result.active = masternode.active;
-  result.online = masternode.online;
-  result.penalty_points = masternode.penalty_points;
-  result.deregistered = masternode.deregistered;
-  result.created_height = masternode.created_height;
-  result.updated_height = masternode.updated_height;
-  result.created_timestamp = masternode.created_timestamp;
-  result.updated_timestamp = masternode.updated_timestamp;
-  return result;
-}
-
-bool get_registration_payload_from_tx(
-    const cryptonote::transaction& tx,
-    cryptonote::masternode_registration_payload& registration_payload)
-{
-  return cryptonote::get_masternode_registration_from_tx_extra(tx.extra, registration_payload);
-}
 
 bool get_mvm_contract_from_tx(
     const cryptonote::transaction& tx,
@@ -310,24 +151,6 @@ bool get_mvm_contract_from_tx(
   }
 
   return true;
-}
-
-bool get_masternode_attestation_id_from_miner_tx_extra(const cryptonote::transaction& miner_tx, std::string& validator_id)
-{
-  validator_id.clear();
-  std::vector<cryptonote::tx_extra_field> tx_extra_fields;
-  if (!cryptonote::parse_tx_extra(miner_tx.extra, tx_extra_fields))
-    return false;
-
-  cryptonote::tx_extra_nonce extra_nonce;
-  if (!cryptonote::find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
-    return false;
-
-  if (extra_nonce.nonce.rfind("mnid:", 0) != 0)
-    return false;
-
-  validator_id = extra_nonce.nonce.substr(5);
-  return !validator_id.empty();
 }
 
 cryptonote::blobdata serialize_mvm_contract_blob(
@@ -1097,7 +920,7 @@ void Blockchain::apply_masternode_registrations_from_block(
   {
     const auto& tx = tx_entry.first;
     cryptonote::masternode_registration_payload registration_payload{};
-    if (!get_registration_payload_from_tx(tx, registration_payload))
+    if (!cryptonote::masternode::get_registration_payload_from_tx(tx, registration_payload))
       continue;
 
     const std::string txid = epee::string_tools::pod_to_hex(get_transaction_hash(tx));
@@ -1115,7 +938,7 @@ void Blockchain::apply_masternode_registrations_from_block(
     }
 
     info.id = txid;
-    info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
+    info.collateral_txid = cryptonote::masternode::make_collateral_outpoint_key(registration_payload.collateral_outpoint);
     info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
     info.collateral_amount = registration_payload.collateral_amount;
     transaction collateral_tx{};
@@ -1139,7 +962,7 @@ void Blockchain::apply_masternode_registrations_from_block(
     set_indexes(m_masternode_db[txid]);
 
     cryptonote::blobdata blob;
-    if (serialize_masternode_blob(m_masternode_db[txid], blob))
+    if (cryptonote::masternode::serialize_blob(m_masternode_db[txid], blob))
       m_db->set_masternode_blob(txid, blob);
     else
       MWARNING("Failed to serialize masternode state for txid " << txid);
@@ -1182,7 +1005,7 @@ void Blockchain::apply_masternode_security_workflow_for_block(
     return;
 
   std::string attested_validator_id;
-  const bool has_attestation = get_masternode_attestation_id_from_miner_tx_extra(bl.miner_tx, attested_validator_id);
+  const bool has_attestation = cryptonote::masternode::get_attestation_id_from_miner_tx_extra(bl.miner_tx, attested_validator_id);
   const bool duty_met = has_attestation && attested_validator_id == expected.id;
 
   masternode_block_undo block_undo{};
@@ -1228,7 +1051,7 @@ void Blockchain::apply_masternode_security_workflow_for_block(
 
   m_masternode_db[expected.id] = std::move(updated);
   cryptonote::blobdata blob;
-  if (serialize_masternode_blob(m_masternode_db[expected.id], blob))
+  if (cryptonote::masternode::serialize_blob(m_masternode_db[expected.id], blob))
     m_db->set_masternode_blob(expected.id, blob);
   else
     MWARNING("Failed to serialize masternode security workflow update for id " << expected.id);
@@ -1374,7 +1197,7 @@ void Blockchain::rebuild_masternode_state_from_chain()
     for (const auto& tx : txs)
     {
       cryptonote::masternode_registration_payload registration_payload{};
-      if (!get_registration_payload_from_tx(tx, registration_payload))
+      if (!cryptonote::masternode::get_registration_payload_from_tx(tx, registration_payload))
         continue;
 
       const std::string txid = epee::string_tools::pod_to_hex(get_transaction_hash(tx));
@@ -1384,7 +1207,7 @@ void Blockchain::rebuild_masternode_state_from_chain()
       if (!info.collateral_txid.empty())
         m_masternode_by_collateral_outpoint.erase(info.collateral_txid);
       info.id = txid;
-      info.collateral_txid = make_masternode_collateral_outpoint_key(registration_payload.collateral_outpoint);
+      info.collateral_txid = cryptonote::masternode::make_collateral_outpoint_key(registration_payload.collateral_outpoint);
       info.operator_key = epee::string_tools::pod_to_hex(registration_payload.operator_pubkey);
       info.collateral_amount = registration_payload.collateral_amount;
       transaction collateral_tx{};
@@ -1459,7 +1282,7 @@ void Blockchain::revert_masternode_transitions_for_block(const uint64_t height)
       set_indexes(m_masternode_db[it->id]);
 
       cryptonote::blobdata blob;
-      if (serialize_masternode_blob(m_masternode_db[it->id], blob))
+      if (cryptonote::masternode::serialize_blob(m_masternode_db[it->id], blob))
         m_db->set_masternode_blob(it->id, blob);
       else
         MWARNING("Failed to serialize reverted masternode state for txid " << it->id);
@@ -3015,7 +2838,7 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
   rsp.current_blockchain_height = get_current_blockchain_height();
   rsp.masternodes.reserve(m_masternode_db.size());
   for (const auto& kv : m_masternode_db)
-    rsp.masternodes.push_back(make_p2p_masternode_info(kv.second));
+    rsp.masternodes.push_back(cryptonote::masternode::make_p2p_info(kv.second));
   std::vector<std::pair<cryptonote::blobdata,block>> blocks;
   get_blocks(arg.blocks, blocks, rsp.missed_ids);
 
@@ -3100,7 +2923,7 @@ void Blockchain::merge_synced_masternodes(const std::vector<bonded_validator_inf
     if (m_masternode_db[masternode.id].active && !m_masternode_db[masternode.id].deregistered && !m_masternode_db[masternode.id].collateral_txid.empty())
       m_masternode_by_collateral_outpoint[m_masternode_db[masternode.id].collateral_txid] = masternode.id;
     cryptonote::blobdata blob;
-    if (serialize_masternode_blob(m_masternode_db[masternode.id], blob))
+    if (cryptonote::masternode::serialize_blob(m_masternode_db[masternode.id], blob))
       m_db->set_masternode_blob(masternode.id, blob);
     else
       MWARNING("Failed to serialize masternode state for id " << masternode.id);
@@ -3132,7 +2955,7 @@ std::vector<p2p_masternode_info> Blockchain::get_p2p_masternodes(bool include_in
   {
     if (!include_inactive && (!kv.second.active || !kv.second.online))
       continue;
-    masternodes.push_back(make_p2p_masternode_info(kv.second));
+    masternodes.push_back(cryptonote::masternode::make_p2p_info(kv.second));
   }
   return masternodes;
 }
@@ -5372,7 +5195,7 @@ leave:
   if (!bvc.m_verifivation_failed)
   {
     if (bonded_validator_registration_tier_is_enabled(m_nettype, m_hardfork->get_current_version()) &&
-        !validate_masternode_registration_rules_for_block(txs, m_masternode_by_operator_key, m_masternode_by_collateral_outpoint, *m_db, m_nettype, blockchain_height))
+        !cryptonote::masternode::validate_registration_rules_for_block(txs, m_masternode_by_operator_key, m_masternode_by_collateral_outpoint, *m_db, m_nettype, blockchain_height))
     {
       MERROR_VER("Block with id: " << id << " failed masternode registration consensus checks");
       bvc.m_verifivation_failed = true;

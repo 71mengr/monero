@@ -634,14 +634,8 @@ namespace crypto {
     ge_tobytes(&image, &point2);
   }
 
-  void crypto_ops::generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
-    assert(sc_check(&sec) == 0);
-    if (!use_fcmppp_key_image_scheme())
-    {
-      generate_key_image_legacy(pub, sec, image);
-      return;
-    }
-
+  static void generate_key_image_fcmpp_inner(const public_key &pub, const secret_key &sec, key_image &image)
+  {
     ge_p3 hp_point;
     ge_p2 r_hp;
     public_key r_g;
@@ -683,6 +677,28 @@ namespace crypto {
 
     key_image_to_y(image);
     memwipe(&r, sizeof(r));
+  }
+
+  bool crypto_ops::generate_key_image_fcmpp(const public_key &pub, const secret_key &sec, key_image &image, uint64_t height)
+  {
+    assert(sc_check(&sec) == 0);
+    if (!use_fcmpp(height))
+    {
+      generate_key_image_legacy(pub, sec, image);
+      return false;
+    }
+    generate_key_image_fcmpp_inner(pub, sec, image);
+    return true;
+  }
+
+  void crypto_ops::generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
+    assert(sc_check(&sec) == 0);
+    if (!use_fcmppp_key_image_scheme())
+    {
+      generate_key_image_legacy(pub, sec, image);
+      return;
+    }
+    generate_key_image_fcmpp_inner(pub, sec, image);
   }
 
 PUSH_WARNINGS

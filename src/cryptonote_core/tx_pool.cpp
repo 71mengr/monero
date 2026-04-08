@@ -384,6 +384,15 @@ namespace cryptonote
       return false;
     }
 
+    if (tx.version >= 2 && tx.rct_signatures.type == rct::RCTTypeFcmpPlusPlus && !use_fcmpp(version))
+    {
+      LOG_PRINT_L1("Rejecting FCMP++ tx " << id << " before HF_VERSION_FCMPPP=" << HF_VERSION_FCMPPP);
+      tvc.m_verifivation_failed = true;
+      tvc.m_invalid_input = true;
+      tvc.m_no_drop_offense = true;
+      return false;
+    }
+
     if (version >= HF_MN_REG && !check_masternode_registration_policy(m_blockchain, tx, id, version))
     {
       LOG_PRINT_L1("transaction " << id << " failed masternode registration mempool policy checks");

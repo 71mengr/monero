@@ -1431,6 +1431,17 @@ namespace rct {
         return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys, index, outSk, rct_config, hwdev);
     }
 
+    rctSig genRctFcmpPlusPlus(const key &message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV & amount_keys, const std::vector<unsigned int> & index, ctkeyV & outSk, const RCTConfig &rct_config, hw::device &hwdev)
+    {
+        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys, index, outSk, rct_config, hwdev);
+    }
+
+    bool verRctFcmpPlusPlus(const rctSig &rv)
+    {
+      CHECK_AND_ASSERT_MES(rv.type == RCTTypeFcmpPlusPlus, false, "verRctFcmpPlusPlus called on non FCMP++ rctSig");
+      return verRctNonSemanticsSimple(rv);
+    }
+
     //RingCT protocol
     //genRct: 
     //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
@@ -1443,6 +1454,8 @@ namespace rct {
     //   must know the destination private key to find the correct amount, else will return a random number    
     bool verRct(const rctSig & rv, bool semantics) {
         PERF_TIMER(verRct);
+        if (rv.type == RCTTypeFcmpPlusPlus)
+          return semantics ? verRctSemanticsSimple(rv) : verRctFcmpPlusPlus(rv);
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeFull, false, "verRct called on non-full rctSig");
         if (semantics)
         {

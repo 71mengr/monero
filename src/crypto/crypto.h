@@ -146,7 +146,9 @@ namespace crypto {
     static bool check_tx_proof(const hash &, const public_key &, const public_key &, const boost::optional<public_key> &, const public_key &, const signature &, const int);
     friend bool check_tx_proof(const hash &, const public_key &, const public_key &, const boost::optional<public_key> &, const public_key &, const signature &, const int);
     static void generate_key_image(const public_key &, const secret_key &, key_image &);
+    static bool generate_key_image_fcmpp(const public_key &, const secret_key &, key_image &, uint64_t height);
     friend void generate_key_image(const public_key &, const secret_key &, key_image &);
+    friend bool generate_key_image_fcmpp(const public_key &, const secret_key &, key_image &, uint64_t height);
     static void generate_ring_signature(const hash &, const key_image &,
       const public_key *const *, std::size_t, const secret_key &, std::size_t, signature *);
     friend void generate_ring_signature(const hash &, const key_image &,
@@ -278,6 +280,9 @@ namespace crypto {
    */
   inline void generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
     crypto_ops::generate_key_image(pub, sec, image);
+  }
+  inline bool generate_key_image_fcmpp(const public_key &pub, const secret_key &sec, key_image &image, uint64_t height) {
+    return crypto_ops::generate_key_image_fcmpp(pub, sec, image, height);
   }
   inline void key_image_to_y(key_image &image) {
     image.data[31] &= 0x7f;

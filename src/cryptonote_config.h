@@ -199,9 +199,14 @@
 #define HF_VERSION_VIEW_TAGS                    16
 #define HF_VERSION_2021_SCALING                 16
 #define HF_VERSION_MASTERNODE_REWARD_SPLIT      17
-#define HF_VERSION_FCMPPP                       18
+#define HF_VERSION_FCMPPP                       20
 #define HF_MN_REG                               17
 #define HF_VERSION_MN_REG                       HF_MN_REG
+
+static inline constexpr bool use_fcmpp(const uint64_t height)
+{
+  return height >= HF_VERSION_FCMPPP;
+}
 
 #define MASTERNODE_REWARD_BASIS_POINTS          2000
 

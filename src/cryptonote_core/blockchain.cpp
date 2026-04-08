@@ -3913,8 +3913,8 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
-  // from v17, allow FCMP++
-  if (hf_version < HF_VERSION_FCMPPP) {
+  // from HF_VERSION_FCMPPP, allow FCMP++
+  if (!use_fcmpp(hf_version)) {
     if (tx.version >= 2 && tx.rct_signatures.type == rct::RCTTypeFcmpPlusPlus)
     {
       MERROR_VER("FCMP++ ring signatures are not allowed before v" << std::to_string(HF_VERSION_FCMPPP));

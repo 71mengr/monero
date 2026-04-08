@@ -63,6 +63,86 @@ TEST(FCMPPlus, InnerProductCompositionProofRoundTrip)
   ASSERT_FALSE(rct::FCMPPlus_Ver(message, wrong_ring, proof));
 }
 
+
+TEST(FCMPPlus, Ring16ProofGenerationAndVerification)
+{
+  rct::keyV ring;
+  ring.reserve(16);
+
+  crypto::secret_key real_secret;
+  constexpr unsigned int real_index = 5;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    crypto::public_key pub;
+    crypto::secret_key sec;
+    crypto::generate_keys(pub, sec);
+    if (i == real_index)
+      real_secret = sec;
+    ring.push_back(rct::pk2rct(pub));
+  }
+
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  const rct::key message = rct::hash_to_scalar(ring[0]);
+  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(real_secret), real_index);
+
+  ASSERT_TRUE(rct::FCMPPlus_Ver(message, ring, proof));
+}
+
+TEST(FCMPPlus, ProofFailsForWrongOutput)
+{
+  rct::keyV ring;
+  ring.reserve(16);
+
+  crypto::secret_key real_secret;
+  constexpr unsigned int real_index = 9;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    crypto::public_key pub;
+    crypto::secret_key sec;
+    crypto::generate_keys(pub, sec);
+    if (i == real_index)
+      real_secret = sec;
+    ring.push_back(rct::pk2rct(pub));
+  }
+
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  const rct::key message = rct::hash_to_scalar(ring[0]);
+  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(real_secret), real_index);
+
+  rct::keyV wrong_ring = ring;
+  crypto::public_key replacement_pub;
+  crypto::secret_key replacement_sec;
+  crypto::generate_keys(replacement_pub, replacement_sec);
+  wrong_ring[real_index] = rct::pk2rct(replacement_pub);
+
+  ASSERT_FALSE(rct::FCMPPlus_Ver(message, wrong_ring, proof));
+}
+
+TEST(FCMPPlus, ProofFailsWhenTreeRootDoesNotMatch)
+{
+  rct::keyV ring;
+  ring.reserve(16);
+
+  crypto::secret_key real_secret;
+  constexpr unsigned int real_index = 3;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    crypto::public_key pub;
+    crypto::secret_key sec;
+    crypto::generate_keys(pub, sec);
+    if (i == real_index)
+      real_secret = sec;
+    ring.push_back(rct::pk2rct(pub));
+  }
+
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  const rct::key message = rct::hash_to_scalar(ring[0]);
+  rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(real_secret), real_index);
+
+  proof.c0 = rct::hash_to_scalar(proof.c0);
+  ASSERT_FALSE(rct::FCMPPlus_Ver(message, ring, proof));
+}
+
 TEST(FCMPPlus, RejectsSignBitSetCommitment)
 {
   rct::FCMPPlus_ResetUsedLinkingTags();

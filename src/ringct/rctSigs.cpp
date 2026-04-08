@@ -34,10 +34,12 @@
 #include "common/threadpool.h"
 #include "common/util.h"
 #include "rctSigs.h"
+#include "fcmp_pp/curve_tree.h"
 #include "bulletproofs.h"
 #include "bulletproofs_plus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
+#include <algorithm>
 #include <cmath>
 #include <mutex>
 #include <unordered_set>
@@ -380,65 +382,35 @@ namespace rct {
         CHECK_AND_ASSERT_THROW_MES(!P.empty(), "FCMP++ ring is empty");
         CHECK_AND_ASSERT_THROW_MES(secret_index < P.size(), "FCMP++ secret index out of range");
 
+        fcmp_pp::curve_tree tree;
+        tree.reserve(P.size());
+        for (const key &out: P)
+            tree.push_back({out, identity(), identity()});
+
         fcmpplus_proof proof{};
         proof.B = P[secret_index];
-        key alpha = skGen(), alpha_G;
-        scalarmultBase(alpha_G, alpha);
-        proof.A = alpha_G;
 
-        keyV current = P;
-        size_t idx = secret_index;
-        while (current.size() > 1)
+        const key alpha = skGen();
+        scalarmultBase(proof.A, alpha);
+
+        proof.L = fcmp_pp::merkle_path(tree, secret_index);
+        proof.R.reserve(proof.L.size());
+
+        std::size_t idx = secret_index;
+        for (size_t i = 0; i < proof.L.size(); ++i)
         {
-<<<<<<< ours
-            if (current.size() & 1)
-                current.push_back(current.back());
-
-            const size_t sibling = idx ^ 1;
-            proof.L.push_back(current[sibling]);
             proof.R.push_back((idx & 1) ? G : identity());
-
-            key left = (idx & 1) ? current[sibling] : current[idx];
-            key right = (idx & 1) ? current[idx] : current[sibling];
-            key parent_scalar = hash_to_scalar(keysV{left, right});
-            key parent;
-            scalarmultBase(parent, parent_scalar);
-
-            keyV next;
-            next.reserve(current.size() / 2);
-            for (size_t i = 0; i < current.size(); i += 2)
-            {
-                key node_scalar = hash_to_scalar(keysV{current[i], current[i + 1]});
-                key node;
-                scalarmultBase(node, node_scalar);
-                next.push_back(node);
-            }
-            current = std::move(next);
             idx >>= 1;
-            current[idx] = parent;
         }
 
-        proof.c0 = current[0];
+        proof.c0 = fcmp_pp::compute_root(tree);
+
         const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         sc_mulsub(proof.z.bytes, challenge.bytes, secret.bytes, alpha.bytes);
 
-            ge_p3 li_p3, ri_p3;
-            key li, ri;
-            hash_to_p3(li_p3, P[(secret_index + i) % P.size()]);
-            hash_to_p3(ri_p3, P[(secret_index + P.size() - (i % P.size())) % P.size()]);
-            ge_p3_tobytes(li.bytes, &li_p3);
-            ge_p3_tobytes(ri.bytes, &ri_p3);
-            proof.L.push_back(li);
-            proof.R.push_back(ri);
-            challenge_seed = hash_to_scalar(keysV{challenge_seed, li, ri});
-        }
-        proof.c0 = challenge_seed;
-        sc_mulsub(proof.z.bytes, proof.c0.bytes, secret.bytes, alpha.bytes);
-        ge_p3 b_p3;
-        hash_to_p3(b_p3, P[secret_index]);
-        ge_p3_tobytes(proof.B.bytes, &b_p3);
         proof.key_image_commitment = hash_to_scalar(keysV{proof.A, proof.B, P[secret_index]});
         proof.linking_tag = hash_to_scalar(keysV{proof.key_image_commitment, proof.B});
+
         return proof;
     }
 
@@ -446,10 +418,13 @@ namespace rct {
     {
         CHECK_AND_ASSERT_MES(!P.empty(), false, "FCMP++ ring is empty");
         CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), false, "FCMP++ proof dimensions mismatch");
-        
+
         CHECK_AND_ASSERT_MES((proof.key_image_commitment.bytes[31] & 0x80) == 0, false, "FCMP++ key commitment has sign bit set");
 
-        key challenge = hash_to_scalar(keysV{message, proof.A, P[0]});
+        key node;
+        const key leaf_scalar = hash_to_scalar(keysV{proof.B, identity(), identity()});
+        scalarmultBase(node, leaf_scalar);
+
         for (size_t i = 0; i < proof.L.size(); ++i)
         {
             key left, right;
@@ -463,14 +438,16 @@ namespace rct {
                 left = node;
                 right = proof.L[i];
             }
-            key parent_scalar = hash_to_scalar(keysV{left, right});
+
+            const key parent_scalar = hash_to_scalar(keysV{left, right});
             scalarmultBase(node, parent_scalar);
         }
+
         CHECK_AND_ASSERT_MES(equalKeys(node, proof.c0), false, "FCMP++ Merkle root mismatch");
 
         const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         key lhs;
-        addKeys2(lhs, proof.z, proof.c0, P[0]);
+        addKeys2(lhs, proof.z, challenge, proof.B);
         CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
 
         const bool commitment_matches_output = std::any_of(P.begin(), P.end(), [&](const key &output_key)

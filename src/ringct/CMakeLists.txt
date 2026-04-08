@@ -51,6 +51,7 @@ target_link_libraries(ringct_basic
 
 set(ringct_sources
   rctSigs.cpp
+  ../fcmp_pp/curve_tree.cpp
 )
 
 set(ringct_headers)

@@ -85,11 +85,19 @@ endif()
 
 set(RUST_TARGET "${RUST_ARCH}-${RUST_PLATFORM}${RUST_TOOLCHAIN}")
 
+find_program(CARGO_EXECUTABLE cargo)
+if(NOT CARGO_EXECUTABLE)
+  message(FATAL_ERROR
+    "Cargo was not found in PATH, but building FCMP++ requires Rust tooling. "
+    "Install Rust/Cargo (https://rustup.rs/) and ensure `cargo` is available, "
+    "then re-run CMake.")
+endif()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CARGO_CMD cargo build --target "${RUST_TARGET}")
+  set(CARGO_CMD ${CARGO_EXECUTABLE} build --target "${RUST_TARGET}")
   set(TARGET_DIR "debug")
 else ()
-  set(CARGO_CMD cargo build --target "${RUST_TARGET}" --release)
+  set(CARGO_CMD ${CARGO_EXECUTABLE} build --target "${RUST_TARGET}" --release)
   set(TARGET_DIR "release")
 endif ()
 

@@ -39,6 +39,8 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include <cmath>
+#include <mutex>
+#include <unordered_set>
 
 using namespace crypto;
 using namespace std;
@@ -121,6 +123,11 @@ namespace
 }
 
 namespace rct {
+    namespace
+    {
+      std::unordered_set<key> g_used_fcmpp_linking_tags;
+      std::mutex g_used_fcmpp_linking_tags_mutex;
+    }
     Bulletproof proveRangeBulletproof(keyV &C, keyV &masks, const std::vector<uint64_t> &amounts, epee::span<const key> sk, hw::device &hwdev)
     {
         CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
@@ -383,6 +390,7 @@ namespace rct {
         size_t idx = secret_index;
         while (current.size() > 1)
         {
+<<<<<<< ours
             if (current.size() & 1)
                 current.push_back(current.back());
 
@@ -413,6 +421,24 @@ namespace rct {
         proof.c0 = current[0];
         const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         sc_mulsub(proof.z.bytes, challenge.bytes, secret.bytes, alpha.bytes);
+
+            ge_p3 li_p3, ri_p3;
+            key li, ri;
+            hash_to_p3(li_p3, P[(secret_index + i) % P.size()]);
+            hash_to_p3(ri_p3, P[(secret_index + P.size() - (i % P.size())) % P.size()]);
+            ge_p3_tobytes(li.bytes, &li_p3);
+            ge_p3_tobytes(ri.bytes, &ri_p3);
+            proof.L.push_back(li);
+            proof.R.push_back(ri);
+            challenge_seed = hash_to_scalar(keysV{challenge_seed, li, ri});
+        }
+        proof.c0 = challenge_seed;
+        sc_mulsub(proof.z.bytes, proof.c0.bytes, secret.bytes, alpha.bytes);
+        ge_p3 b_p3;
+        hash_to_p3(b_p3, P[secret_index]);
+        ge_p3_tobytes(proof.B.bytes, &b_p3);
+        proof.key_image_commitment = hash_to_scalar(keysV{proof.A, proof.B, P[secret_index]});
+        proof.linking_tag = hash_to_scalar(keysV{proof.key_image_commitment, proof.B});
         return proof;
     }
 
@@ -420,7 +446,10 @@ namespace rct {
     {
         CHECK_AND_ASSERT_MES(!P.empty(), false, "FCMP++ ring is empty");
         CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), false, "FCMP++ proof dimensions mismatch");
-        key node = proof.B;
+        
+        CHECK_AND_ASSERT_MES((proof.key_image_commitment.bytes[31] & 0x80) == 0, false, "FCMP++ key commitment has sign bit set");
+
+        key challenge = hash_to_scalar(keysV{message, proof.A, P[0]});
         for (size_t i = 0; i < proof.L.size(); ++i)
         {
             key left, right;
@@ -441,9 +470,31 @@ namespace rct {
 
         const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         key lhs;
-        addKeys2(lhs, proof.z, challenge, proof.B);
-        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ Schnorr relation mismatch");
+        addKeys2(lhs, proof.z, proof.c0, P[0]);
+        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
+
+        const bool commitment_matches_output = std::any_of(P.begin(), P.end(), [&](const key &output_key)
+        {
+            const key expected_commitment = hash_to_scalar(keysV{proof.A, proof.B, output_key});
+            return equalKeys(expected_commitment, proof.key_image_commitment);
+        });
+        CHECK_AND_ASSERT_MES(commitment_matches_output, false, "FCMP++ commitment does not map to a curve-tree output");
+
+        const key expected_linking_tag = hash_to_scalar(keysV{proof.key_image_commitment, proof.B});
+        CHECK_AND_ASSERT_MES(equalKeys(expected_linking_tag, proof.linking_tag), false, "FCMP++ linking tag mismatch");
+
+        {
+            std::lock_guard<std::mutex> lock(g_used_fcmpp_linking_tags_mutex);
+            const auto inserted = g_used_fcmpp_linking_tags.insert(proof.linking_tag);
+            CHECK_AND_ASSERT_MES(inserted.second, false, "FCMP++ linking tag already used");
+        }
         return true;
+    }
+
+    void FCMPPlus_ResetUsedLinkingTags()
+    {
+        std::lock_guard<std::mutex> lock(g_used_fcmpp_linking_tags_mutex);
+        g_used_fcmpp_linking_tags.clear();
     }
 
     // MLSAG signatures

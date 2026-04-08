@@ -62,20 +62,29 @@ namespace
     return result;
   }
 
-  crypto::secret_key derive_legacy_output_shared_secret(const crypto::hash &tx_hash, const crypto::public_key &view_key)
+  void migrate_key_images_to_canonical_y(cryptonote::BlockchainDB &db)
   {
-    struct legacy_shared_secret_input
+    std::vector<std::pair<crypto::key_image, crypto::key_image>> remapped_key_images;
+    db.for_all_key_images([&](const crypto::key_image &stored_key_image)
     {
-      crypto::hash tx_hash;
-      crypto::public_key view_key;
-      char domain[3];
-    } input{tx_hash, view_key, {'d', 'h', 0}};
+      crypto::key_image canonical_y = stored_key_image;
+      crypto::key_image_to_y(canonical_y);
+      if (canonical_y != stored_key_image)
+        remapped_key_images.emplace_back(stored_key_image, canonical_y);
+      return true;
+    });
 
-    crypto::ec_scalar scalar;
-    crypto::hash_to_scalar(&input, sizeof(input), scalar);
-    crypto::secret_key result;
-    memcpy(&result, &scalar, sizeof(result));
-    return result;
+    for (const auto &entry : remapped_key_images)
+    {
+      const crypto::key_image &stored_key_image = entry.first;
+      const crypto::key_image &canonical_y = entry.second;
+      if (!db.has_key_image(canonical_y))
+        db.add_spent_key(canonical_y);
+      db.remove_spent_key(stored_key_image);
+    }
+
+    if (!remapped_key_images.empty())
+      LOG_PRINT_L1("Fixup: migrated " << remapped_key_images.size() << " spent key images to canonical y form");
   }
 }
 
@@ -507,6 +516,7 @@ void BlockchainDB::fixup()
   epee::string_tools::hex_to_pod(mainnet_genesis_hex, mainnet_genesis_hash );
   set_batch_transactions(true);
   batch_start();
+  migrate_key_images_to_canonical_y(*this);
 
   if (get_block_hash_from_height(0) == mainnet_genesis_hash)
   {

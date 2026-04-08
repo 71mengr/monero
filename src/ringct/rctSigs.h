@@ -36,6 +36,7 @@
 #define RCTSIGS_H
 
 #include <cstddef>
+#include <unordered_set>
 #include <vector>
 #include <tuple>
 
@@ -74,6 +75,8 @@ namespace rct {
     {
       key A;
       key B;
+      key key_image_commitment;
+      key linking_tag;
       keyV L;
       keyV R;
       key z;
@@ -98,6 +101,7 @@ namespace rct {
     bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
     fcmpplus_proof FCMPPlus_Gen(const key &message, const keyV &P, const key &secret, unsigned int secret_index);
     bool FCMPPlus_Ver(const key &message, const keyV &P, const fcmpplus_proof &proof);
+    void FCMPPlus_ResetUsedLinkingTags();
 
     //proveRange and verRange
     //proveRange gives C, and mask such that \sumCi = C

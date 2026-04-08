@@ -1264,7 +1264,9 @@ void BlockchainLMDB::add_spent_key(const crypto::key_image& k_image)
 
   CURSOR(spent_keys)
 
-  MDB_val k = {sizeof(k_image), (void *)&k_image};
+  crypto::key_image key_image_y = k_image;
+  crypto::key_image_to_y(key_image_y);
+  MDB_val k = {sizeof(key_image_y), (void *)&key_image_y};
   if (auto result = mdb_cursor_put(m_cur_spent_keys, (MDB_val *)&zerokval, &k, MDB_NODUPDATA)) {
     if (result == MDB_KEYEXIST)
       throw1(KEY_IMAGE_EXISTS("Attempting to add spent key image that's already in the db"));
@@ -1281,7 +1283,9 @@ void BlockchainLMDB::remove_spent_key(const crypto::key_image& k_image)
 
   CURSOR(spent_keys)
 
-  MDB_val k = {sizeof(k_image), (void *)&k_image};
+  crypto::key_image key_image_y = k_image;
+  crypto::key_image_to_y(key_image_y);
+  MDB_val k = {sizeof(key_image_y), (void *)&key_image_y};
   auto result = mdb_cursor_get(m_cur_spent_keys, (MDB_val *)&zerokval, &k, MDB_GET_BOTH);
   if (result != 0 && result != MDB_NOTFOUND)
       throw1(DB_ERROR(lmdb_error("Error finding spent key to remove", result).c_str()));
@@ -3757,7 +3761,9 @@ bool BlockchainLMDB::has_key_image(const crypto::key_image& img) const
   TXN_PREFIX_RDONLY();
   RCURSOR(spent_keys);
 
-  MDB_val k = {sizeof(img), (void *)&img};
+  crypto::key_image key_image_y = img;
+  crypto::key_image_to_y(key_image_y);
+  MDB_val k = {sizeof(key_image_y), (void *)&key_image_y};
   ret = (mdb_cursor_get(m_cur_spent_keys, (MDB_val *)&zerokval, &k, MDB_GET_BOTH) == 0);
 
   TXN_POSTFIX_RDONLY();

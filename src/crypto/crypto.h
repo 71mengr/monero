@@ -279,6 +279,9 @@ namespace crypto {
   inline void generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
     crypto_ops::generate_key_image(pub, sec, image);
   }
+  inline void key_image_to_y(key_image &image) {
+    image.data[31] &= 0x7f;
+  }
   inline void generate_ring_signature(const hash &prefix_hash, const key_image &image,
     const public_key *const *pubs, std::size_t pubs_count,
     const secret_key &sec, std::size_t sec_index,

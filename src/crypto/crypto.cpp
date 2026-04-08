@@ -666,12 +666,22 @@ namespace crypto {
     ge_scalarmult(&r_hp, &r, &hp_point);
     ge_tobytes(&r_hp_bytes, &r_hp);
 
-    struct fcmppp_key_image_buffer
+    struct fcmppp_pedersen_commitment_buffer
     {
       public_key rG;
       key_image rHp;
-    } ki_buf{r_g, r_hp_bytes};
-    hash_to_scalar(&ki_buf, sizeof(ki_buf), reinterpret_cast<ec_scalar &>(image));
+    } commitment_buf{r_g, r_hp_bytes};
+    key_image pedersen_commitment;
+    hash_to_scalar(&commitment_buf, sizeof(commitment_buf), reinterpret_cast<ec_scalar &>(pedersen_commitment));
+
+    struct fcmppp_linking_tag_buffer
+    {
+      key_image commitment;
+      public_key output;
+    } linking_tag_buf{pedersen_commitment, pub};
+    hash_to_scalar(&linking_tag_buf, sizeof(linking_tag_buf), reinterpret_cast<ec_scalar &>(image));
+
+    key_image_to_y(image);
     memwipe(&r, sizeof(r));
   }
 

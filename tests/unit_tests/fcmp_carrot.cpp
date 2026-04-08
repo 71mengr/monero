@@ -26,6 +26,7 @@ TEST(FCMPPlus, KeyImagePedersenToggle)
   unsetenv("MONERO_FCMPPP_KEY_IMAGE");
 
   ASSERT_NE(legacy, fcmp);
+  ASSERT_EQ(fcmp.data[31] & 0x80, 0);
 }
 
 TEST(FCMPPlus, InnerProductCompositionProofRoundTrip)
@@ -44,6 +45,12 @@ TEST(FCMPPlus, InnerProductCompositionProofRoundTrip)
     ring.push_back(rct::pk2rct(pub));
   }
 
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  crypto::public_key pub0, pub1;
+  crypto::secret_key sec0, sec1;
+  crypto::generate_keys(pub0, sec0);
+  crypto::generate_keys(pub1, sec1);
+
   const rct::key message = rct::hash_to_scalar(ring[0]);
   const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(target_secret), secret_index);
 
@@ -54,6 +61,38 @@ TEST(FCMPPlus, InnerProductCompositionProofRoundTrip)
   crypto::generate_keys(replacement_pub, replacement_sec);
   wrong_ring[secret_index] = rct::pk2rct(replacement_pub);
   ASSERT_FALSE(rct::FCMPPlus_Ver(message, wrong_ring, proof));
+}
+
+TEST(FCMPPlus, RejectsSignBitSetCommitment)
+{
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  crypto::public_key pub0, pub1;
+  crypto::secret_key sec0, sec1;
+  crypto::generate_keys(pub0, sec0);
+  crypto::generate_keys(pub1, sec1);
+
+  rct::keyV ring{rct::pk2rct(pub0), rct::pk2rct(pub1)};
+  const rct::key message = rct::hash_to_scalar(rct::pk2rct(pub0));
+  rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(sec1), 1);
+  proof.key_image_commitment.bytes[31] |= 0x80;
+
+  ASSERT_FALSE(rct::FCMPPlus_Ver(message, ring, proof));
+}
+
+TEST(FCMPPlus, LinkingTagDoubleSpendDetected)
+{
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  crypto::public_key pub0, pub1;
+  crypto::secret_key sec0, sec1;
+  crypto::generate_keys(pub0, sec0);
+  crypto::generate_keys(pub1, sec1);
+
+  rct::keyV ring{rct::pk2rct(pub0), rct::pk2rct(pub1)};
+  const rct::key message = rct::hash_to_scalar(rct::pk2rct(pub0));
+  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(sec1), 1);
+
+  ASSERT_TRUE(rct::FCMPPlus_Ver(message, ring, proof));
+  ASSERT_FALSE(rct::FCMPPlus_Ver(message, ring, proof));
 }
 
 TEST(CarrotWallet, AccountKeysDefaultCompatibility)

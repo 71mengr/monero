@@ -138,6 +138,7 @@ namespace rct {
     rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
     rctSig genRctFcmpPlusPlus(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
     bool verRctFcmpPlusPlus(const rctSig & rv);
+    bool verRctFcmpPlusPlus(const rctSig &sig, const key &message, uint64_t height, const crypto::ec_point &tree_root);
     bool verRct(const rctSig & rv, bool semantics);
     static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
     bool verRctSemanticsSimple(const rctSig & rv);

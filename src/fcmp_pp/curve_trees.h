@@ -461,3 +461,25 @@ std::shared_ptr<CurveTreesV1> curve_trees_v1(
 //----------------------------------------------------------------------------------------------------------------------
 } //namespace curve_trees
 } //namespace fcmp_pp
+
+namespace rct
+{
+namespace fcmp_pp
+{
+// Legacy compatibility aliases used by ringct/wallet/db integration while FCMP++
+// migration is in progress.
+struct output_tuple final
+{
+  rct::key O;
+  rct::key I;
+  rct::key C;
+};
+
+using curve_tree = std::vector<output_tuple>;
+
+rct::key compute_root(const curve_tree &tree);
+void grow_tree(curve_tree &tree, const std::vector<output_tuple> &new_leaves);
+void trim_tree(curve_tree &tree, std::size_t leaves_to_remove);
+std::vector<rct::key> merkle_path(const curve_tree &tree, std::size_t leaf_index);
+} // namespace fcmp_pp
+} // namespace rct

@@ -1683,3 +1683,97 @@ GrowLayerInstructions CurveTrees<C1, C2>::set_next_layer_extension(
 //----------------------------------------------------------------------------------------------------------------------
 } //namespace curve_trees
 } //namespace fcmp_pp
+
+namespace rct
+{
+namespace fcmp_pp
+{
+namespace
+{
+  rct::key leaf_hash(const output_tuple &leaf)
+  {
+    return rct::hash_to_scalar(rct::keyV{leaf.O, leaf.I, leaf.C});
+  }
+
+  rct::key parent_hash(const rct::key &left, const rct::key &right)
+  {
+    return rct::hash_to_scalar(rct::keyV{left, right});
+  }
+}
+
+rct::key compute_root(const curve_tree &tree)
+{
+  if (tree.empty())
+    return rct::zero();
+
+  std::vector<rct::key> level;
+  level.reserve(tree.size());
+  for (const auto &leaf : tree)
+    level.push_back(leaf_hash(leaf));
+
+  while (level.size() > 1)
+  {
+    std::vector<rct::key> next;
+    next.reserve((level.size() + 1) / 2);
+    for (size_t i = 0; i < level.size(); i += 2)
+    {
+      const rct::key &left = level[i];
+      const rct::key &right = (i + 1 < level.size()) ? level[i + 1] : level[i];
+      next.push_back(parent_hash(left, right));
+    }
+    level = std::move(next);
+  }
+
+  rct::key root;
+  rct::scalarmultBase(root, level.front());
+  return root;
+}
+
+void grow_tree(curve_tree &tree, const std::vector<output_tuple> &new_leaves)
+{
+  tree.insert(tree.end(), new_leaves.begin(), new_leaves.end());
+}
+
+void trim_tree(curve_tree &tree, std::size_t leaves_to_remove)
+{
+  if (leaves_to_remove >= tree.size())
+  {
+    tree.clear();
+    return;
+  }
+  tree.resize(tree.size() - leaves_to_remove);
+}
+
+std::vector<rct::key> merkle_path(const curve_tree &tree, std::size_t leaf_index)
+{
+  std::vector<rct::key> path;
+  if (tree.empty() || leaf_index >= tree.size())
+    return path;
+
+  std::vector<rct::key> level;
+  level.reserve(tree.size());
+  for (const auto &leaf : tree)
+    level.push_back(leaf_hash(leaf));
+
+  size_t idx = leaf_index;
+  while (level.size() > 1)
+  {
+    const size_t sibling_idx = (idx % 2 == 0) ? std::min(idx + 1, level.size() - 1) : idx - 1;
+    path.push_back(level[sibling_idx]);
+
+    std::vector<rct::key> next;
+    next.reserve((level.size() + 1) / 2);
+    for (size_t i = 0; i < level.size(); i += 2)
+    {
+      const rct::key &left = level[i];
+      const rct::key &right = (i + 1 < level.size()) ? level[i + 1] : level[i];
+      next.push_back(parent_hash(left, right));
+    }
+    idx /= 2;
+    level = std::move(next);
+  }
+
+  return path;
+}
+} // namespace fcmp_pp
+} // namespace rct

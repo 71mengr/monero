@@ -40,7 +40,7 @@
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_protocol/enums.h"
-#include "fcmp_pp/curve_tree.h"
+#include "fcmp_pp/curve_trees.h"
 
 /** \file
  * Cryptonote Blockchain Database Interface

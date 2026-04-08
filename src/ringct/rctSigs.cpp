@@ -34,7 +34,8 @@
 #include "common/threadpool.h"
 #include "common/util.h"
 #include "rctSigs.h"
-#include "fcmp_pp/curve_tree.h"
+#include "fcmp_pp/curve_trees.h"
+#include "fcmp_pp/proof.h"
 #include "bulletproofs.h"
 #include "bulletproofs_plus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -1440,6 +1441,15 @@ namespace rct {
     {
       CHECK_AND_ASSERT_MES(rv.type == RCTTypeFcmpPlusPlus, false, "verRctFcmpPlusPlus called on non FCMP++ rctSig");
       return verRctNonSemanticsSimple(rv);
+    }
+
+    bool verRctFcmpPlusPlus(const rctSig &sig, const key &/*message*/, uint64_t /*height*/, const crypto::ec_point &tree_root)
+    {
+      CHECK_AND_ASSERT_MES(sig.type == RCTTypeFcmpPlusPlus, false, "verRctFcmpPlusPlus called on non FCMP++ rctSig");
+      const rct::key expected_root = rct::pt2rct(tree_root);
+      if (!sig.p.FCMPPlusProofs.empty())
+        CHECK_AND_ASSERT_MES(equalKeys(sig.p.FCMPPlusProofs.front().c0, expected_root), false, "FCMP++ tree root mismatch");
+      return verRctFcmpPlusPlus(sig);
     }
 
     //RingCT protocol

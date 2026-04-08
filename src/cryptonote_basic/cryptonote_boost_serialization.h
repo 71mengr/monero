@@ -358,6 +358,8 @@ namespace boost
     a & x.MGs;
     if (ver >= 1u)
       a & x.CLSAGs;
+    if (ver >= 3u)
+      a & x.FCMPPlusProofs;
     if (x.rangeSigs.empty())
       a & x.pseudoOuts;
   }
@@ -431,6 +433,6 @@ namespace boost
 }
 }
 
-BOOST_CLASS_VERSION(rct::rctSigPrunable, 2)
+BOOST_CLASS_VERSION(rct::rctSigPrunable, 3)
 BOOST_CLASS_VERSION(rct::rctSig, 2)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)

@@ -21,19 +21,13 @@ namespace rct::fcmp_pp
 
     key hash_leaf(const output_tuple &leaf)
     {
-      const key s = hash_to_scalar(keysV{leaf.O, leaf.I, leaf.C});
-      key p;
-      scalarmultBase_curve(p, s, curve_id::SELENE);
-      return p;
+      return hash_to_ec_curve(keysV{leaf.O, leaf.I, leaf.C}, curve_id::SELENE);
     }
 
     key hash_parent(const key &left, const key &right, const std::size_t layer_depth)
     {
-      const key s = hash_to_scalar(keysV{left, right});
       const curve_id curve = (layer_depth % 2 == 0) ? curve_id::SELENE : curve_id::HELIOS;
-      key parent;
-      scalarmultBase_curve(parent, s, curve);
-      return parent;
+      return hash_to_ec_curve(keysV{left, right}, curve);
     }
 
     keyV hash_adjacent_pairs(const keyV &layer, const std::size_t layer_depth)
@@ -57,6 +51,40 @@ namespace rct::fcmp_pp
       }
 
       return next;
+    }
+
+
+    key reconstruct_root_from_path(const output_tuple &leaf, std::size_t leaf_index, const std::vector<key> &path)
+    {
+      key node = hash_leaf(leaf);
+      std::size_t idx = leaf_index;
+      for (std::size_t depth = 0; depth < path.size(); ++depth)
+      {
+        const key &sibling = path[depth];
+        const key left = (idx % 2 == 0) ? node : sibling;
+        const key right = (idx % 2 == 0) ? sibling : node;
+        node = hash_parent(left, right, depth);
+        if ((depth % 2) == 0)
+          node = point_to_curve_point(node, curve_id::HELIOS);
+        idx >>= 1;
+      }
+      return node;
+    }
+    key compute_root_impl(const curve_tree &tree)
+    {
+      if (tree.empty())
+        return identity();
+
+      keyV current;
+      current.reserve(tree.size());
+      for (const output_tuple &leaf : tree)
+        current.push_back(hash_leaf(leaf));
+
+      std::size_t layer_depth = 0;
+      while (current.size() > 1)
+        current = hash_adjacent_pairs(current, layer_depth++);
+
+      return current.front();
     }
   }
 
@@ -104,10 +132,7 @@ namespace rct::fcmp_pp
         chunk.push_back(tree[j].C);
       }
 
-      const key s = hash_to_scalar(chunk);
-      key p;
-      scalarmultBase_curve(p, s, curve_id::SELENE);
-      layer0.push_back(p);
+      layer0.push_back(hash_to_ec_curve(chunk, curve_id::SELENE));
     }
 
     return layer0;
@@ -118,38 +143,26 @@ namespace rct::fcmp_pp
     if (layer0.empty())
       return {};
 
-    keysV scalars;
-    scalars.reserve(layer0.size());
-    for (const key &p : layer0)
-      scalars.push_back(hash_to_scalar(p));
-
     keyV scalar_points;
-    scalar_points.reserve(scalars.size());
-    for (const key &s : scalars)
-    {
-      key p;
-      scalarmultBase_curve(p, s, curve_id::SELENE);
-      scalar_points.push_back(p);
-    }
+    scalar_points.reserve(layer0.size());
+    for (const key &p : layer0)
+      scalar_points.push_back(hash_to_ec_curve(keysV{p}, curve_id::SELENE));
 
-    return hash_adjacent_pairs(scalar_points, 0);
+    return hash_adjacent_pairs(scalar_points, 1);
   }
 
   key compute_root(const curve_tree &tree)
   {
-    if (tree.empty())
-      return identity();
+    const key root = compute_root_impl(tree);
 
-    keyV current;
-    current.reserve(tree.size());
-    for (const output_tuple &leaf : tree)
-      current.push_back(hash_leaf(leaf));
+    if (!tree.empty())
+    {
+      const std::vector<key> path = merkle_path(tree, 0);
+      const key reconstructed = reconstruct_root_from_path(tree.front(), 0, path);
+      CHECK_AND_ASSERT_THROW_MES(equalKeys(root, reconstructed), "curve-tree root alternating-curve sanity check failed");
+    }
 
-    std::size_t layer_depth = 0;
-    while (current.size() > 1)
-      current = hash_adjacent_pairs(current, layer_depth++);
-
-    return current.front();
+    return root;
   }
 
   std::vector<key> merkle_path(const curve_tree &tree, std::size_t leaf_index)
@@ -165,6 +178,7 @@ namespace rct::fcmp_pp
     std::size_t idx = leaf_index;
     std::vector<key> path;
     std::size_t layer_depth = 0;
+    key reconstructed = current[idx];
 
     while (current.size() > 1)
     {
@@ -174,9 +188,18 @@ namespace rct::fcmp_pp
       const std::size_t sibling = idx ^ 1;
       path.push_back(current[sibling]);
 
+      const key left = (idx % 2 == 0) ? reconstructed : current[sibling];
+      const key right = (idx % 2 == 0) ? current[sibling] : reconstructed;
+      reconstructed = hash_parent(left, right, layer_depth);
+      if ((layer_depth % 2) == 0)
+        reconstructed = point_to_curve_point(reconstructed, curve_id::HELIOS);
+
       current = hash_adjacent_pairs(current, layer_depth++);
       idx >>= 1;
     }
+
+    const key expected_root = compute_root_impl(tree);
+    CHECK_AND_ASSERT_THROW_MES(equalKeys(reconstructed, expected_root), "merkle path alternating-curve sanity check failed");
 
     return path;
   }

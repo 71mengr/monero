@@ -47,6 +47,7 @@ extern "C" {
 #include "crypto/crypto.h"
 
 #include "rctTypes.h"
+#include "crypto/curve_switch.h"
 
 //Define this flag when debugging to get additional info on the console
 #ifdef DBG
@@ -187,5 +188,10 @@ namespace rct {
     key genCommitmentMask(const key &sk);
     void ecdhEncode(ecdhTuple & unmasked, const key & sharedSec, bool v2);
     void ecdhDecode(ecdhTuple & masked, const key & sharedSec, bool v2);
+}
+
+namespace rct::fcmp_pp {
+    void scalarmultBase_curve(key &point, const key &scalar, curve_id curve);
+    key hash_to_ec_curve(const keyV &inputs, curve_id curve);
 }
 #endif  /* RCTOPS_H */

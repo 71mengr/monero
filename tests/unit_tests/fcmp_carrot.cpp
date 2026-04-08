@@ -270,3 +270,36 @@ TEST(FCMPPlusCurveTree, ReorgTrimRestoresOriginalRoot)
   const rct::key root_after_reorg = rct::fcmp_pp::compute_root(tree);
   ASSERT_TRUE(rct::equalKeys(root_before, root_after_reorg));
 }
+
+
+TEST(FCMPPlusCurveTree, FourLeafRootMatchesSpecVector)
+{
+  const rct::fcmp_pp::curve_tree tree{
+    {rct::G, rct::H, rct::H2},
+    {rct::H, rct::H2, rct::G},
+    {rct::H2, rct::G, rct::H},
+    {rct::identity(), rct::G, rct::H2},
+  };
+
+  const auto to_helios = [](const rct::key &point) {
+    const rct::key helios_scalar = rct::fcmp_pp::curve25519_to_helios_scalar(point);
+    rct::key helios_point;
+    rct::fcmp_pp::scalarmultBase_curve(helios_point, helios_scalar, rct::fcmp_pp::curve_id::HELIOS);
+    return helios_point;
+  };
+
+  const rct::key leaf0 = rct::fcmp_pp::hash_to_ec_curve(rct::keyV{tree[0].O, tree[0].I, tree[0].C}, rct::fcmp_pp::curve_id::SELENE);
+  const rct::key leaf1 = rct::fcmp_pp::hash_to_ec_curve(rct::keyV{tree[1].O, tree[1].I, tree[1].C}, rct::fcmp_pp::curve_id::SELENE);
+  const rct::key leaf2 = rct::fcmp_pp::hash_to_ec_curve(rct::keyV{tree[2].O, tree[2].I, tree[2].C}, rct::fcmp_pp::curve_id::SELENE);
+  const rct::key leaf3 = rct::fcmp_pp::hash_to_ec_curve(rct::keyV{tree[3].O, tree[3].I, tree[3].C}, rct::fcmp_pp::curve_id::SELENE);
+
+  const rct::key parent0 = to_helios(rct::fcmp_pp::hash_to_ec_curve(rct::keyV{leaf0, leaf1}, rct::fcmp_pp::curve_id::SELENE));
+  const rct::key parent1 = to_helios(rct::fcmp_pp::hash_to_ec_curve(rct::keyV{leaf2, leaf3}, rct::fcmp_pp::curve_id::SELENE));
+  const rct::key expected_root = rct::fcmp_pp::hash_to_ec_curve(rct::keyV{parent0, parent1}, rct::fcmp_pp::curve_id::HELIOS);
+
+  const rct::key root = rct::fcmp_pp::compute_root(tree);
+  ASSERT_TRUE(rct::equalKeys(root, expected_root));
+
+  const std::vector<rct::key> path = rct::fcmp_pp::merkle_path(tree, 0);
+  ASSERT_EQ(path.size(), 2);
+}

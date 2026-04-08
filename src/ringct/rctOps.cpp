@@ -726,3 +726,35 @@ namespace rct {
         }
     }
 }
+
+namespace rct::fcmp_pp {
+  key curve25519_to_helios_scalar(const key &point)
+  {
+    return hash_to_scalar(keysV{point, H});
+  }
+
+  key helios_to_curve25519_scalar(const key &point)
+  {
+    return hash_to_scalar(keysV{point, G});
+  }
+
+  void scalarmultBase_curve(key &point, const key &scalar, curve_id curve)
+  {
+    if (curve == curve_id::SELENE)
+    {
+      scalarmultBase(point, scalar);
+      return;
+    }
+
+    const key helios_scalar = hash_to_scalar(keysV{scalar, H2});
+    scalarmultBase(point, helios_scalar);
+  }
+
+  key hash_to_ec_curve(const keyV &inputs, curve_id curve)
+  {
+    const key s = hash_to_scalar(inputs);
+    key p;
+    scalarmultBase_curve(p, s, curve);
+    return p;
+  }
+}

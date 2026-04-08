@@ -40,6 +40,7 @@
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_protocol/enums.h"
+#include "fcmp_pp/curve_tree.h"
 
 /** \file
  * Cryptonote Blockchain Database Interface
@@ -575,6 +576,11 @@ protected:
   bool m_auto_remove_logs = true;  //!< whether or not to automatically remove old logs
 
   HardFork* m_hardfork;
+
+  rct::fcmp_pp::curve_tree m_curve_tree;
+  std::vector<std::size_t> m_curve_tree_block_leaf_counts;
+
+  void rollback_block(std::size_t leaves_to_remove);
 
 public:
 
@@ -1184,6 +1190,10 @@ public:
    * @param txs return-by-reference the transactions from the popped block
    */
   virtual void pop_block(block& blk, std::vector<transaction>& txs);
+
+  virtual void add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple);
+  virtual rct::key get_curve_tree_root(uint64_t height) const;
+  virtual void rebuild_curve_tree();
 
 
   /**

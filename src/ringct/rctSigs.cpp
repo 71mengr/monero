@@ -129,6 +129,11 @@ namespace rct {
     {
       std::unordered_set<key> g_used_fcmpp_linking_tags;
       std::mutex g_used_fcmpp_linking_tags_mutex;
+
+      key fcmpplus_pedersen_from_output(const key &output)
+      {
+        return hash_to_scalar(keysV{output, H});
+      }
     }
     Bulletproof proveRangeBulletproof(keyV &C, keyV &masks, const std::vector<uint64_t> &amounts, epee::span<const key> sk, hw::device &hwdev)
     {
@@ -408,8 +413,8 @@ namespace rct {
         const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         sc_mulsub(proof.z.bytes, challenge.bytes, secret.bytes, alpha.bytes);
 
-        proof.key_image_commitment = hash_to_scalar(keysV{proof.A, proof.B, P[secret_index]});
-        proof.linking_tag = hash_to_scalar(keysV{proof.key_image_commitment, proof.B});
+        proof.key_image_commitment = fcmpplus_pedersen_from_output(P[secret_index]);
+        proof.linking_tag = hash_to_scalar(proof.key_image_commitment);
 
         return proof;
     }
@@ -450,14 +455,11 @@ namespace rct {
         addKeys2(lhs, proof.z, challenge, proof.B);
         CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
 
-        const bool commitment_matches_output = std::any_of(P.begin(), P.end(), [&](const key &output_key)
-        {
-            const key expected_commitment = hash_to_scalar(keysV{proof.A, proof.B, output_key});
-            return equalKeys(expected_commitment, proof.key_image_commitment);
-        });
-        CHECK_AND_ASSERT_MES(commitment_matches_output, false, "FCMP++ commitment does not map to a curve-tree output");
+        const fcmp_pp::output_tuple leaf_from_proof{proof.B, proof.key_image_commitment, proof.c0};
+        const key expected_key_image_commitment = fcmpplus_pedersen_from_output(leaf_from_proof.O);
+        CHECK_AND_ASSERT_MES(equalKeys(expected_key_image_commitment, leaf_from_proof.I), false, "FCMP++ key image commitment mismatch");
 
-        const key expected_linking_tag = hash_to_scalar(keysV{proof.key_image_commitment, proof.B});
+        const key expected_linking_tag = hash_to_scalar(leaf_from_proof.I);
         CHECK_AND_ASSERT_MES(equalKeys(expected_linking_tag, proof.linking_tag), false, "FCMP++ linking tag mismatch");
 
         {

@@ -241,6 +241,8 @@ const char* const LMDB_HF_STARTING_HEIGHTS = "hf_starting_heights";
 const char* const LMDB_HF_VERSIONS = "hf_versions";
 
 const char* const LMDB_PROPERTIES = "properties";
+const char* const LMDB_CURVE_TREE_LEAVES = "curve_tree_leaves";
+const char* const LMDB_CURVE_TREE_NODES = "curve_tree_nodes";
 const char* const LMDB_MASTERNODE_PREFIX = "masternode:";
 
 const char zerokey[8] = {0};
@@ -1521,6 +1523,9 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_PROPERTIES, MDB_CREATE, m_properties, "Failed to open db handle for m_properties");
 
+  lmdb_db_open(txn, LMDB_CURVE_TREE_LEAVES, MDB_INTEGERKEY | MDB_CREATE, m_curve_tree_leaves, "Failed to open db handle for m_curve_tree_leaves");
+  lmdb_db_open(txn, LMDB_CURVE_TREE_NODES, MDB_INTEGERKEY | MDB_CREATE, m_curve_tree_nodes, "Failed to open db handle for m_curve_tree_nodes");
+
   mdb_set_dupsort(txn, m_spent_keys, compare_hash32);
   mdb_set_dupsort(txn, m_block_heights, compare_hash32);
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
@@ -1628,6 +1633,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   txn.commit();
 
   m_open = true;
+   rebuild_curve_tree
   // from here, init should be finished
 }
 
@@ -1707,7 +1713,10 @@ void BlockchainLMDB::reset()
     throw0(DB_ERROR(lmdb_error("Failed to drop m_hf_versions: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_properties, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_properties: ", result).c_str()));
-
+  if (auto result = mdb_drop(txn, m_curve_tree_leaves, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_curve_tree_leaves: ", result).c_str()));
+  if (auto result = mdb_drop(txn, m_curve_tree_nodes, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_curve_tree_nodes: ", result).c_str()));
   // init with current version
   MDB_val_str(k, "version");
   MDB_val_copy<uint32_t> v(VERSION);

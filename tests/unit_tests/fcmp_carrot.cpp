@@ -6,6 +6,9 @@
 #include "crypto/crypto.h"
 #include "ringct/rctSigs.h"
 #include "cryptonote_basic/account.h"
+#include "fcmp_pp/curve_tree.h"
+#include "fcmp_pp/rust_bridge.h"
+#include "crypto/curve_switch.h"
 
 TEST(FCMPPlus, KeyImagePedersenToggle)
 {
@@ -199,4 +202,46 @@ TEST(CarrotDB, SymmetricSharedSecretDerivationIsDeterministic)
   crypto::hash_to_scalar(&in, sizeof(in), s1);
   crypto::hash_to_scalar(&in, sizeof(in), s2);
   ASSERT_EQ(memcmp(&s1, &s2, sizeof(s1)), 0);
+}
+
+TEST(FCMPPlusCurveTree, AlternatingCurveHashingDiffers)
+{
+  const rct::key scalar = rct::hash_to_scalar(rct::identity());
+  rct::key selene_point;
+  rct::key helios_point;
+  rct::fcmp_pp::scalarmultBase_curve(selene_point, scalar, rct::fcmp_pp::curve_id::SELENE);
+  rct::fcmp_pp::scalarmultBase_curve(helios_point, scalar, rct::fcmp_pp::curve_id::HELIOS);
+
+  ASSERT_FALSE(rct::equalKeys(selene_point, helios_point));
+}
+
+TEST(FCMPPlusRustBridge, GenerateAndVerifyProofRoundTrip)
+{
+  const rct::key message = rct::hash_to_scalar(rct::H);
+  const rct::key secret = rct::hash_to_scalar(rct::G);
+  rct::keyV ring{rct::G, rct::H, rct::H2};
+  rct::fcmp_pp::curve_tree tree{{rct::G, rct::identity(), rct::identity()}};
+  const rct::key root = rct::fcmp_pp::compute_root(tree);
+
+  const std::vector<std::size_t> decoys{1, 2};
+  const std::vector<std::uint8_t> proof = rct::fcmp_pp::fcmp_pp_generate_proof(0, root, decoys, ring, secret, message);
+  ASSERT_TRUE(rct::fcmp_pp::fcmp_pp_verify_proof(proof, root, secret, ring, message));
+}
+
+TEST(FCMPPlusCurveTree, ReorgTrimRestoresOriginalRoot)
+{
+  rct::fcmp_pp::curve_tree tree;
+  const rct::fcmp_pp::output_tuple leaf0{rct::G, rct::identity(), rct::H};
+  const rct::fcmp_pp::output_tuple leaf1{rct::H, rct::identity(), rct::H2};
+  const rct::fcmp_pp::output_tuple leaf2{rct::H2, rct::identity(), rct::G};
+
+  rct::fcmp_pp::grow_tree(tree, {leaf0, leaf1});
+  const rct::key root_before = rct::fcmp_pp::compute_root(tree);
+
+  rct::fcmp_pp::grow_tree(tree, {leaf2});
+  ASSERT_FALSE(rct::equalKeys(root_before, rct::fcmp_pp::compute_root(tree)));
+
+  rct::fcmp_pp::trim_tree(tree, 1);
+  const rct::key root_after_reorg = rct::fcmp_pp::compute_root(tree);
+  ASSERT_TRUE(rct::equalKeys(root_before, root_after_reorg));
 }

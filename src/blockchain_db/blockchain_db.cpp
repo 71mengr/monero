@@ -289,6 +289,8 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   {
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
+    const txout_to_key *out_key = boost::get<txout_to_key>(&tx.vout[i].target);
+    rct::key leaf_commitment = rct::identity();
     if (miner_tx && tx.version == 2)
     {
       cryptonote::tx_out vout = tx.vout[i];
@@ -296,12 +298,18 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
       vout.amount = 0;
       amount_output_indices[i] = add_output(tx_hash, vout, i, tx.unlock_time,
         &commitment);
+      leaf_commitment = commitment;
     }
     else
     {
       amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
         tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+      if (tx.version > 1)
+        leaf_commitment = tx.rct_signatures.outPk[i].mask;
     }
+
+    if (out_key != nullptr)
+      add_curve_tree_leaf({rct::pk2rct(out_key->key), rct::identity(), leaf_commitment});
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);
 }
@@ -385,6 +393,46 @@ void BlockchainDB::pop_block(block& blk, std::vector<transaction>& txs)
     remove_transaction(h);
   }
   remove_transaction(get_transaction_hash(blk.miner_tx));
+
+  std::size_t removed_leaves = 0;
+  const auto count_leaves = [&](const transaction &tx)
+  {
+    for (const auto &vout : tx.vout)
+    {
+      if (boost::get<txout_to_key>(&vout.target) != nullptr)
+        ++removed_leaves;
+    }
+  };
+
+  count_leaves(blk.miner_tx);
+  for (const auto &tx : txs)
+    count_leaves(tx);
+
+  rollback_block(removed_leaves);
+}
+
+
+void BlockchainDB::add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple)
+{
+  rct::fcmp_pp::grow_tree(m_curve_tree, std::vector<rct::fcmp_pp::output_tuple>{output_tuple});
+}
+
+rct::key BlockchainDB::get_curve_tree_root(uint64_t /*height*/) const
+{
+  return rct::fcmp_pp::compute_root(m_curve_tree);
+}
+
+void BlockchainDB::rebuild_curve_tree()
+{
+  // Leaves are persisted by concrete DB implementations. Rebuild the in-memory cache from persisted leaves.
+  rct::fcmp_pp::curve_tree rebuilt;
+  rebuilt.insert(rebuilt.end(), m_curve_tree.begin(), m_curve_tree.end());
+  m_curve_tree = std::move(rebuilt);
+}
+
+void BlockchainDB::rollback_block(std::size_t leaves_to_remove)
+{
+  rct::fcmp_pp::trim_tree(m_curve_tree, leaves_to_remove);
 }
 
 bool BlockchainDB::is_open() const

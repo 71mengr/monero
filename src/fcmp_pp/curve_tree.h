@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "ringct/rctOps.h"
+#include "crypto/curve_switch.h"
 
 namespace rct::fcmp_pp
 {

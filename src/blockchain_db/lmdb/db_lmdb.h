@@ -72,6 +72,8 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_hf_versions;
 
   MDB_cursor *m_txc_properties;
+  MDB_cursor *m_txc_curve_tree_leaves;
+  MDB_cursor *m_txc_curve_tree_nodes;
 } mdb_txn_cursors;
 
 #define m_cur_blocks	m_cursors->m_txc_blocks
@@ -92,6 +94,8 @@ typedef struct mdb_txn_cursors
 #define m_cur_alt_blocks	m_cursors->m_txc_alt_blocks
 #define m_cur_hf_versions	m_cursors->m_txc_hf_versions
 #define m_cur_properties	m_cursors->m_txc_properties
+#define m_cur_curve_tree_leaves	m_cursors->m_txc_curve_tree_leaves
+#define m_cur_curve_tree_nodes	m_cursors->m_txc_curve_tree_nodes
 
 typedef struct mdb_rflags
 {
@@ -114,6 +118,8 @@ typedef struct mdb_rflags
   bool m_rf_alt_blocks;
   bool m_rf_hf_versions;
   bool m_rf_properties;
+  bool m_rf_curve_tree_leaves;
+  bool m_rf_curve_tree_nodes;
 } mdb_rflags;
 
 typedef struct mdb_threadinfo
@@ -482,6 +488,8 @@ private:
   MDB_dbi m_hf_versions;
 
   MDB_dbi m_properties;
+  MDB_dbi m_curve_tree_leaves;
+  MDB_dbi m_curve_tree_nodes;
 
   mutable uint64_t m_cum_size;	// used in batch size estimation
   mutable unsigned int m_cum_count;

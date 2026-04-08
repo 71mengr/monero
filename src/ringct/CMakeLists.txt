@@ -52,6 +52,7 @@ target_link_libraries(ringct_basic
 set(ringct_sources
   rctSigs.cpp
   ../fcmp_pp/curve_tree.cpp
+  ../fcmp_pp/rust_bridge.cpp
 )
 
 set(ringct_headers)
@@ -75,3 +76,10 @@ target_link_libraries(ringct
   PRIVATE
     ${OPENSSL_LIBRARIES}
     ${EXTRA_LIBRARIES})
+
+set(FCMP_PP_RUST_LIB "${CMAKE_SOURCE_DIR}/src/fcmp_pp/libfcmp_pp_rust.a")
+if (EXISTS ${FCMP_PP_RUST_LIB})
+  target_link_libraries(ringct PRIVATE ${FCMP_PP_RUST_LIB})
+else()
+  message(STATUS "libfcmp_pp_rust.a not found; building with FCMP++ rust bridge fallback")
+endif()

@@ -1,29 +1,42 @@
 #include "curve_tree.h"
 
 #include <algorithm>
+
 #include "common/expect.h"
 
 namespace rct::fcmp_pp
 {
   namespace
   {
+    key point_to_curve_point(const key &point, const curve_id next_curve)
+    {
+      if (next_curve != curve_id::HELIOS)
+        return point;
+
+      const key helios_scalar = curve25519_to_helios_scalar(point);
+      key helios_point;
+      scalarmultBase_curve(helios_point, helios_scalar, curve_id::HELIOS);
+      return helios_point;
+    }
+
     key hash_leaf(const output_tuple &leaf)
     {
       const key s = hash_to_scalar(keysV{leaf.O, leaf.I, leaf.C});
       key p;
-      scalarmultBase(p, s);
+      scalarmultBase_curve(p, s, curve_id::SELENE);
       return p;
     }
 
-    key hash_parent(const key &left, const key &right)
+    key hash_parent(const key &left, const key &right, const std::size_t layer_depth)
     {
       const key s = hash_to_scalar(keysV{left, right});
+      const curve_id curve = (layer_depth % 2 == 0) ? curve_id::SELENE : curve_id::HELIOS;
       key parent;
-      scalarmultBase(parent, s);
+      scalarmultBase_curve(parent, s, curve);
       return parent;
     }
 
-    keyV hash_adjacent_pairs(const keyV &layer)
+    keyV hash_adjacent_pairs(const keyV &layer, const std::size_t layer_depth)
     {
       if (layer.empty())
         return {};
@@ -35,7 +48,14 @@ namespace rct::fcmp_pp
       keyV next;
       next.reserve(padded.size() / 2);
       for (std::size_t i = 0; i < padded.size(); i += 2)
-        next.push_back(hash_parent(padded[i], padded[i + 1]));
+        next.push_back(hash_parent(padded[i], padded[i + 1], layer_depth));
+
+      if ((layer_depth % 2) == 0)
+      {
+        for (key &node : next)
+          node = point_to_curve_point(node, curve_id::HELIOS);
+      }
+
       return next;
     }
   }
@@ -86,7 +106,7 @@ namespace rct::fcmp_pp
 
       const key s = hash_to_scalar(chunk);
       key p;
-      scalarmultBase(p, s);
+      scalarmultBase_curve(p, s, curve_id::SELENE);
       layer0.push_back(p);
     }
 
@@ -108,11 +128,11 @@ namespace rct::fcmp_pp
     for (const key &s : scalars)
     {
       key p;
-      scalarmultBase(p, s);
+      scalarmultBase_curve(p, s, curve_id::SELENE);
       scalar_points.push_back(p);
     }
 
-    return hash_adjacent_pairs(scalar_points);
+    return hash_adjacent_pairs(scalar_points, 0);
   }
 
   key compute_root(const curve_tree &tree)
@@ -125,8 +145,9 @@ namespace rct::fcmp_pp
     for (const output_tuple &leaf : tree)
       current.push_back(hash_leaf(leaf));
 
+    std::size_t layer_depth = 0;
     while (current.size() > 1)
-      current = hash_adjacent_pairs(current);
+      current = hash_adjacent_pairs(current, layer_depth++);
 
     return current.front();
   }
@@ -143,6 +164,7 @@ namespace rct::fcmp_pp
 
     std::size_t idx = leaf_index;
     std::vector<key> path;
+    std::size_t layer_depth = 0;
 
     while (current.size() > 1)
     {
@@ -152,12 +174,7 @@ namespace rct::fcmp_pp
       const std::size_t sibling = idx ^ 1;
       path.push_back(current[sibling]);
 
-      keyV next;
-      next.reserve(current.size() / 2);
-      for (std::size_t i = 0; i < current.size(); i += 2)
-        next.push_back(hash_parent(current[i], current[i + 1]));
-
-      current = std::move(next);
+      current = hash_adjacent_pairs(current, layer_depth++);
       idx >>= 1;
     }
 

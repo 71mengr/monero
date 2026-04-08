@@ -38,6 +38,7 @@
 #include "bulletproofs_plus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
+#include <cmath>
 
 using namespace crypto;
 using namespace std;
@@ -365,6 +366,57 @@ namespace rct {
 
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l) {
         return CLSAG_Gen(message, P, p, C, z, C_nonzero, C_offset, l, hw::get_device("default"));
+    }
+
+    fcmpplus_proof FCMPPlus_Gen(const key &message, const keyV &P, const key &secret, unsigned int secret_index)
+    {
+        CHECK_AND_ASSERT_THROW_MES(!P.empty(), "FCMP++ ring is empty");
+        CHECK_AND_ASSERT_THROW_MES(secret_index < P.size(), "FCMP++ secret index out of range");
+
+        fcmpplus_proof proof{};
+        key alpha = skGen();
+        key alpha_G;
+        scalarmultBase(alpha_G, alpha);
+        proof.A = alpha_G;
+
+        const size_t rounds = static_cast<size_t>(std::ceil(std::log2(P.size())));
+        proof.L.reserve(rounds);
+        proof.R.reserve(rounds);
+        key challenge_seed = hash_to_scalar(keysV{message, proof.A, P[secret_index]});
+        for (size_t i = 0; i < rounds; ++i)
+        {
+            ge_p3 li_p3, ri_p3;
+            key li, ri;
+            hash_to_p3(li_p3, P[(secret_index + i) % P.size()]);
+            hash_to_p3(ri_p3, P[(secret_index + P.size() - (i % P.size())) % P.size()]);
+            ge_p3_tobytes(li.bytes, &li_p3);
+            ge_p3_tobytes(ri.bytes, &ri_p3);
+            proof.L.push_back(li);
+            proof.R.push_back(ri);
+            challenge_seed = hash_to_scalar(keysV{challenge_seed, li, ri});
+        }
+        proof.c0 = challenge_seed;
+        sc_mulsub(proof.z.bytes, proof.c0.bytes, secret.bytes, alpha.bytes);
+        ge_p3 b_p3;
+        hash_to_p3(b_p3, P[secret_index]);
+        ge_p3_tobytes(proof.B.bytes, &b_p3);
+        return proof;
+    }
+
+    bool FCMPPlus_Ver(const key &message, const keyV &P, const fcmpplus_proof &proof)
+    {
+        CHECK_AND_ASSERT_MES(!P.empty(), false, "FCMP++ ring is empty");
+        CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), false, "FCMP++ proof dimensions mismatch");
+
+        key challenge = hash_to_scalar(keysV{message, proof.A, P[0]});
+        for (size_t i = 0; i < proof.L.size(); ++i)
+            challenge = hash_to_scalar(keysV{challenge, proof.L[i], proof.R[i]});
+        CHECK_AND_ASSERT_MES(equalKeys(challenge, proof.c0), false, "FCMP++ challenge mismatch");
+
+        key lhs;
+        addKeys2(lhs, proof.z, proof.c0, P[0]);
+        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
+        return true;
     }
 
     // MLSAG signatures

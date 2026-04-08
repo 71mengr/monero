@@ -53,6 +53,7 @@ set(unit_tests_sources
   epee_serialization.cpp
   epee_utils.cpp
   expect.cpp
+  fcmp_carrot.cpp
   fee.cpp
   json_serialization.cpp
   get_xtype_from_string.cpp

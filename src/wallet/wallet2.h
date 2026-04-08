@@ -1180,6 +1180,8 @@ private:
     bool has_multisig_partial_key_images() const;
     bool has_unknown_key_images() const;
     bool get_multisig_seed(epee::wipeable_string& seed, const epee::wipeable_string &passphrase = std::string()) const;
+    cryptonote::account_public_address generate_carrot_stealth_address(uint64_t account, uint64_t address_index) const;
+    bool recover_carrot_key(const crypto::hash &nonce, crypto::secret_key &recovered_key) const;
     bool key_on_device() const { return get_device_type() != hw::device::device_type::SOFTWARE; }
     hw::device::device_type get_device_type() const { return m_key_device_type; }
     bool reconnect_device();

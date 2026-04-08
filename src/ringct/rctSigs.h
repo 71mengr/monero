@@ -64,6 +64,21 @@ namespace hw {
 
 
 namespace rct {
+    enum class fcmpplus_mode : uint8_t
+    {
+      legacy_clsag = 0,
+      fcmpplus = 1
+    };
+
+    struct fcmpplus_proof
+    {
+      key A;
+      key B;
+      keyV L;
+      keyV R;
+      key z;
+      key c0;
+    };
 
     boroSig genBorromean(const key64 x, const key64 P1, const key64 P2, const bits indices);
     bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
@@ -81,6 +96,8 @@ namespace rct {
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l);
     clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, unsigned int, hw::device &);
     bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
+    fcmpplus_proof FCMPPlus_Gen(const key &message, const keyV &P, const key &secret, unsigned int secret_index);
+    bool FCMPPlus_Ver(const key &message, const keyV &P, const fcmpplus_proof &proof);
 
     //proveRange and verRange
     //proveRange gives C, and mask such that \sumCi = C
@@ -140,4 +157,3 @@ namespace rct {
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 }
 #endif  /* RCTSIGS_H */
-

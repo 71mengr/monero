@@ -43,6 +43,24 @@ using epee::string_tools::pod_to_hex;
 
 namespace cryptonote
 {
+namespace
+{
+  crypto::secret_key derive_carrot_output_shared_secret(const crypto::hash &tx_hash, const crypto::public_key &view_key)
+  {
+    struct shared_secret_input
+    {
+      crypto::hash nonce;
+      crypto::public_key view_key;
+    } input{tx_hash, view_key};
+
+    crypto::ec_scalar scalar;
+    crypto::hash_to_scalar(&input, sizeof(input), scalar);
+    crypto::secret_key result;
+    static_assert(sizeof(result) == sizeof(scalar), "Unexpected scalar/key size mismatch");
+    memcpy(&result, &scalar, sizeof(result));
+    return result;
+  }
+}
 
 bool matches_category(relay_method method, relay_category category) noexcept
 {
@@ -222,6 +240,17 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   }
 
   uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
+  if (!tx.vout.empty())
+  {
+    // Carrot-era shared secret derivation seed. This keeps legacy DB schemas unchanged while
+    // preparing add_output/get_output_key callers for symmetric derivation.
+    const txout_to_key *out_key = boost::get<txout_to_key>(&tx.vout[0].target);
+    if (out_key != nullptr)
+    {
+      const crypto::secret_key output_shared_secret = derive_carrot_output_shared_secret(tx_hash, out_key->key);
+      (void)output_shared_secret;
+    }
+  }
 
   std::vector<uint64_t> amount_output_indices(tx.vout.size());
 

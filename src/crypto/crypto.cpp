@@ -37,6 +37,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include <boost/shared_ptr.hpp>
+#include <sodium/crypto_core_ed25519.h>
 
 #include "common/varint.h"
 #include "warnings.h"
@@ -618,13 +619,60 @@ namespace crypto {
     ge_p1p1_to_p3(&res, &point2);
   }
 
-  void crypto_ops::generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
+  static bool use_fcmppp_key_image_scheme()
+  {
+    const char *value = std::getenv("MONERO_FCMPPP_KEY_IMAGE");
+    return value != nullptr && value[0] == '1';
+  }
+
+  static void generate_key_image_legacy(const public_key &pub, const secret_key &sec, key_image &image)
+  {
     ge_p3 point;
     ge_p2 point2;
-    assert(sc_check(&sec) == 0);
     hash_to_ec(pub, point);
     ge_scalarmult(&point2, &unwrap(sec), &point);
     ge_tobytes(&image, &point2);
+  }
+
+  void crypto_ops::generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
+    assert(sc_check(&sec) == 0);
+    if (!use_fcmppp_key_image_scheme())
+    {
+      generate_key_image_legacy(pub, sec, image);
+      return;
+    }
+
+    ge_p3 hp_point;
+    ge_p2 r_hp;
+    public_key r_g;
+    key_image r_hp_bytes;
+    hash nonce_hash;
+    struct nonce_material
+    {
+      secret_key sec;
+      public_key pub;
+    } material{sec, pub};
+    cn_fast_hash(&material, sizeof(material), nonce_hash);
+
+    // libsodium scalar reduction for deterministic nonce material.
+    unsigned char wide_nonce[crypto_core_ed25519_NONREDUCEDSCALARBYTES] = {0};
+    memcpy(wide_nonce, &nonce_hash, sizeof(nonce_hash));
+    ec_scalar r;
+    crypto_core_ed25519_scalar_reduce(reinterpret_cast<unsigned char *>(&r), wide_nonce);
+    memwipe(wide_nonce, sizeof(wide_nonce));
+
+    ge_scalarmult_base(&r_g, &r);
+    hash_to_ec(pub, hp_point);
+    ge_scalarmult(&r_hp, &r, &hp_point);
+    ge_tobytes(&r_hp_bytes, &r_hp);
+
+    struct fcmppp_key_image_buffer
+    {
+      public_key rG;
+      key_image rHp;
+    } ki_buf{r_g, r_hp_bytes};
+    hash_to_scalar(&ki_buf, sizeof(ki_buf), reinterpret_cast<ec_scalar &>(image));
+    memwipe(&r, sizeof(r));
   }
 
 PUSH_WARNINGS

@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <algorithm>
+#include <cstring>
 #include <numeric>
 #include <tuple>
 #include <queue>
@@ -1513,6 +1514,53 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
   seed = epee::to_hex::wipeable_string({(const unsigned char*)data.data(), data.size()});
 
   return true;
+}
+//----------------------------------------------------------------------------------------------------
+cryptonote::account_public_address wallet2::generate_carrot_stealth_address(uint64_t account, uint64_t address_index) const
+{
+  const account_keys &keys = get_account().get_keys();
+  struct carrot_input
+  {
+    crypto::secret_key view;
+    uint64_t account;
+    uint64_t index;
+  } in{keys.m_view_secret_key, account, address_index};
+
+  crypto::ec_scalar spend_scalar;
+  crypto::hash_to_scalar(&in, sizeof(in), spend_scalar);
+  crypto::secret_key carrot_spend;
+  memcpy(&carrot_spend, &spend_scalar, sizeof(carrot_spend));
+  crypto::public_key carrot_spend_pub;
+  THROW_WALLET_EXCEPTION_IF(!crypto::secret_key_to_public_key(carrot_spend, carrot_spend_pub), error::wallet_internal_error, "Failed to derive Carrot spend public key");
+
+  struct carrot_view_input
+  {
+    crypto::secret_key spend;
+    crypto::secret_key view;
+  } vin{carrot_spend, keys.m_view_secret_key};
+  crypto::ec_scalar view_scalar;
+  crypto::hash_to_scalar(&vin, sizeof(vin), view_scalar);
+  crypto::secret_key carrot_view;
+  memcpy(&carrot_view, &view_scalar, sizeof(carrot_view));
+  crypto::public_key carrot_view_pub;
+  THROW_WALLET_EXCEPTION_IF(!crypto::secret_key_to_public_key(carrot_view, carrot_view_pub), error::wallet_internal_error, "Failed to derive Carrot view public key");
+
+  return cryptonote::account_public_address{carrot_spend_pub, carrot_view_pub};
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::recover_carrot_key(const crypto::hash &nonce, crypto::secret_key &recovered_key) const
+{
+  const account_keys &keys = get_account().get_keys();
+  struct carrot_recovery_input
+  {
+    crypto::hash nonce;
+    crypto::secret_key view;
+  } in{nonce, keys.m_view_secret_key};
+
+  crypto::ec_scalar recovered_scalar;
+  crypto::hash_to_scalar(&in, sizeof(in), recovered_scalar);
+  memcpy(&recovered_key, &recovered_scalar, sizeof(recovered_key));
+  return recovered_key != crypto::null_skey;
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::reconnect_device()

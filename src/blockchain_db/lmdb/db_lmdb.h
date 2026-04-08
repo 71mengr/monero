@@ -350,6 +350,9 @@ public:
   bool block_rtxn_start(MDB_txn **mtxn, mdb_txn_cursors **mcur) const;
 
   virtual void pop_block(block& blk, std::vector<transaction>& txs);
+  virtual void add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple) override;
+  virtual rct::key get_curve_tree_root(uint64_t height) const override;
+  virtual void rebuild_curve_tree() override;
 
   virtual bool can_thread_bulk_indices() const { return true; }
 
@@ -428,6 +431,8 @@ private:
   bool prune_worker(int mode, uint32_t pruning_seed);
 
   virtual bool is_read_only() const;
+
+  void trim_curve_tree_leaves(std::size_t leaves_to_remove);
 
   virtual uint64_t get_database_size() const;
 

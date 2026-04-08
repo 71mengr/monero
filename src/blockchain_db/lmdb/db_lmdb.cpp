@@ -1633,7 +1633,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   txn.commit();
 
   m_open = true;
-   rebuild_curve_tree
+  rebuild_curve_tree();
   // from here, init should be finished
 }
 
@@ -4320,6 +4320,23 @@ void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
   try
   {
     BlockchainDB::pop_block(blk, txs);
+
+    std::size_t removed_leaves = 0;
+    const auto count_leaves = [&](const transaction &tx)
+    {
+      for (const auto &vout : tx.vout)
+      {
+        if (boost::get<txout_to_key>(&vout.target) != nullptr)
+          ++removed_leaves;
+      }
+    };
+
+    count_leaves(blk.miner_tx);
+    for (const auto &tx : txs)
+      count_leaves(tx);
+
+    trim_curve_tree_leaves(removed_leaves);
+
     block_wtxn_stop();
   }
   catch (...)
@@ -4327,6 +4344,89 @@ void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
     block_wtxn_abort();
     throw;
   }
+}
+
+void BlockchainLMDB::add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  BlockchainDB::add_curve_tree_leaf(output_tuple);
+
+  TXN_BLOCK_PREFIX(0);
+
+  MDB_stat stat;
+  if (auto result = mdb_stat(*txn_ptr, m_curve_tree_leaves, &stat))
+    throw0(DB_ERROR(lmdb_error("Failed to get curve tree leaf count: ", result).c_str()));
+
+  const uint64_t leaf_idx = stat.ms_entries;
+  MDB_val_set(k, leaf_idx);
+  MDB_val_set(v, output_tuple);
+
+  if (auto result = mdb_put(*txn_ptr, m_curve_tree_leaves, &k, &v, MDB_NOOVERWRITE))
+    throw0(DB_ERROR(lmdb_error("Failed to add curve tree leaf to LMDB: ", result).c_str()));
+
+  TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+rct::key BlockchainLMDB::get_curve_tree_root(uint64_t height) const
+{
+  (void)height;
+  return BlockchainDB::get_curve_tree_root(height);
+}
+
+void BlockchainLMDB::rebuild_curve_tree()
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  rct::fcmp_pp::curve_tree rebuilt;
+
+  TXN_PREFIX_RDONLY();
+  RCURSOR(curve_tree_leaves);
+
+  MDB_val k = zerokval;
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_curve_tree_leaves, &k, &v, MDB_FIRST);
+  while (result == MDB_SUCCESS)
+  {
+    if (v.mv_size != sizeof(rct::fcmp_pp::output_tuple))
+      throw0(DB_ERROR("Unexpected curve tree leaf size"));
+
+    rebuilt.push_back(*reinterpret_cast<const rct::fcmp_pp::output_tuple *>(v.mv_data));
+    result = mdb_cursor_get(m_cur_curve_tree_leaves, &k, &v, MDB_NEXT);
+  }
+
+  if (result != MDB_NOTFOUND)
+    throw0(DB_ERROR(lmdb_error("Failed to iterate curve tree leaves: ", result).c_str()));
+
+  TXN_POSTFIX_RDONLY();
+  m_curve_tree = std::move(rebuilt);
+}
+
+void BlockchainLMDB::trim_curve_tree_leaves(std::size_t leaves_to_remove)
+{
+  if (leaves_to_remove == 0)
+    return;
+
+  TXN_BLOCK_PREFIX(0);
+
+  MDB_stat stat;
+  if (auto result = mdb_stat(*txn_ptr, m_curve_tree_leaves, &stat))
+    throw0(DB_ERROR(lmdb_error("Failed to query curve tree leaf count for trim: ", result).c_str()));
+
+  if (leaves_to_remove > stat.ms_entries)
+    throw0(DB_ERROR("Attempted to trim more curve tree leaves than exist"));
+
+  for (std::size_t i = 0; i < leaves_to_remove; ++i)
+  {
+    const uint64_t idx = static_cast<uint64_t>(stat.ms_entries - 1 - i);
+    MDB_val_set(k, idx);
+    if (auto result = mdb_del(*txn_ptr, m_curve_tree_leaves, &k, nullptr))
+      throw0(DB_ERROR(lmdb_error("Failed to trim curve tree leaf: ", result).c_str()));
+  }
+
+  TXN_BLOCK_POSTFIX_SUCCESS();
 }
 
 void BlockchainLMDB::get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,

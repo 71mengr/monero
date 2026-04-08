@@ -3913,6 +3913,16 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
     }
   }
 
+  // from v17, allow FCMP++
+  if (hf_version < HF_VERSION_FCMPPP) {
+    if (tx.version >= 2 && tx.rct_signatures.type == rct::RCTTypeFcmpPlusPlus)
+    {
+      MERROR_VER("FCMP++ ring signatures are not allowed before v" << std::to_string(HF_VERSION_FCMPPP));
+      tvc.m_invalid_output = true;
+      return false;
+    }
+  }
+
   // from v16, forbid bulletproofs
   if (hf_version > HF_VERSION_BULLETPROOF_PLUS) {
     if (tx.version >= 2) {
@@ -3973,7 +3983,7 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       }
     }
   }
-  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeBulletproofPlus)
+  else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG || rv.type == rct::RCTTypeBulletproofPlus || rv.type == rct::RCTTypeFcmpPlusPlus)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
     rv.mixRing.resize(pubkeys.size());
@@ -4023,6 +4033,13 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
       {
         rv.p.CLSAGs[n].I = rct::ki2rct(boost::get<txin_to_key>(tx.vin[n]).k_image);
       }
+    }
+  }
+  else if (rv.type == rct::RCTTypeFcmpPlusPlus)
+  {
+    if (!tx.pruned)
+    {
+      CHECK_AND_ASSERT_MES(rv.p.FCMPPlusProofs.size() == tx.vin.size(), false, "Bad FCMPPlusProofs size");
     }
   }
   else
@@ -4267,7 +4284,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   }
 
   // Warn that new RCT types are present, and thus the cache is not being used effectively
-  static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeBulletproofPlus;
+  static constexpr const std::uint8_t RCT_CACHE_TYPE = rct::RCTTypeFcmpPlusPlus;
   if (tx.rct_signatures.type > RCT_CACHE_TYPE)
   {
     MWARNING("RCT cache is not caching new verification results. Please update RCT_CACHE_TYPE!");
@@ -4310,6 +4327,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     case rct::RCTTypeBulletproof2:
     case rct::RCTTypeCLSAG:
     case rct::RCTTypeBulletproofPlus:
+    case rct::RCTTypeFcmpPlusPlus:
     {
       if (!ver_rct_non_semantics_simple_cached(tx, pubkeys, m_rct_ver_cache, RCT_CACHE_TYPE))
       {

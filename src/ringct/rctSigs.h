@@ -71,18 +71,6 @@ namespace rct {
       fcmpplus = 1
     };
 
-    struct fcmpplus_proof
-    {
-      key A;
-      key B;
-      key key_image_commitment;
-      key linking_tag;
-      keyV L;
-      keyV R;
-      key z;
-      key c0;
-    };
-
     boroSig genBorromean(const key64 x, const key64 P1, const key64 P2, const bits indices);
     bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
 

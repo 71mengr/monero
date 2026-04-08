@@ -197,6 +197,7 @@ namespace rct {
             case RCTTypeBulletproof2:
             case RCTTypeCLSAG:
             case RCTTypeBulletproofPlus:
+            case RCTTypeFcmpPlusPlus:
                 return true;
             default:
                 return false;
@@ -210,6 +211,7 @@ namespace rct {
             case RCTTypeBulletproof:
             case RCTTypeBulletproof2:
             case RCTTypeCLSAG:
+            case RCTTypeFcmpPlusPlus:
                 return true;
             default:
                 return false;

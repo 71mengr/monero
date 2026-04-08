@@ -193,6 +193,31 @@ namespace rct {
         END_SERIALIZE()
     };
 
+    struct fcmpplus_proof
+    {
+      key A;
+      key B;
+      key key_image_commitment;
+      key linking_tag;
+      keyV L;
+      keyV R;
+      key z;
+      key c0;
+
+      BEGIN_SERIALIZE_OBJECT()
+        FIELD(A)
+        FIELD(B)
+        FIELD(key_image_commitment)
+        FIELD(linking_tag)
+        FIELD(L)
+        FIELD(R)
+        FIELD(z)
+        FIELD(c0)
+        if (L.size() != R.size())
+          return false;
+      END_SERIALIZE()
+    };
+
     //contains the data for an Borromean sig
     // also contains the "Ci" values such that
     // \sum Ci = C
@@ -303,6 +328,7 @@ namespace rct {
       RCTTypeBulletproof2 = 4,
       RCTTypeCLSAG = 5,
       RCTTypeBulletproofPlus = 6,
+      RCTTypeFcmpPlusPlus = 7,
     };
     enum RangeProofType { RangeProofBorromean, RangeProofBulletproof, RangeProofMultiOutputBulletproof, RangeProofPaddedBulletproof };
     struct RCTConfig {
@@ -335,7 +361,7 @@ namespace rct {
           FIELD(type)
           if (type == RCTTypeNull)
             return ar.good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus)
+          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus && type != RCTTypeFcmpPlusPlus)
             return false;
           VARINT_FIELD(txnFee)
           // inputs/outputs not saved, only here for serialization help
@@ -364,7 +390,7 @@ namespace rct {
             return false;
           for (size_t i = 0; i < outputs; ++i)
           {
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
+            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus || type == RCTTypeFcmpPlusPlus)
             {
               // Since RCTTypeBulletproof2 enote types, we don't serialize the blinding factor, and only serialize the
               // first 8 bytes of ecdhInfo[i].amount
@@ -419,6 +445,7 @@ namespace rct {
         std::vector<BulletproofPlus> bulletproofs_plus;
         std::vector<mgSig> MGs; // simple rct has N, full has 1
         std::vector<clsag> CLSAGs;
+        std::vector<fcmpplus_proof> FCMPPlusProofs;
         keyV pseudoOuts; //C - for simple rct
 
         // when changing this function, update cryptonote::get_pruned_transaction_weight
@@ -433,7 +460,7 @@ namespace rct {
             return false;
           if (type == RCTTypeNull)
             return ar.good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus)
+          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus && type != RCTTypeFcmpPlusPlus)
             return false;
           if (type == RCTTypeBulletproofPlus)
           {
@@ -454,10 +481,10 @@ namespace rct {
               return false;
             ar.end_array();
           }
-          else if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
+          else if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeFcmpPlusPlus)
           {
             uint32_t nbp = bulletproofs.size();
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
+            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeFcmpPlusPlus)
               VARINT_FIELD(nbp)
             else
               FIELD(nbp)
@@ -492,7 +519,22 @@ namespace rct {
             ar.end_array();
           }
 
-          if (type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeFcmpPlusPlus)
+          {
+            ar.tag("FCMPPlusProofs");
+            ar.begin_array();
+            PREPARE_CUSTOM_VECTOR_SERIALIZATION(inputs, FCMPPlusProofs);
+            if (FCMPPlusProofs.size() != inputs)
+              return false;
+            for (size_t i = 0; i < inputs; ++i)
+            {
+              FIELDS(FCMPPlusProofs[i])
+              if (inputs - i > 1)
+                 ar.delimit_array();
+            }
+            ar.end_array();
+          }
+          else if (type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
           {
             ar.tag("CLSAGs");
             ar.begin_array();
@@ -583,7 +625,7 @@ namespace rct {
             }
             ar.end_array();
           }
-          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus || type == RCTTypeFcmpPlusPlus)
           {
             ar.tag("pseudoOuts");
             ar.begin_array();
@@ -607,6 +649,7 @@ namespace rct {
           FIELD(bulletproofs_plus)
           FIELD(MGs)
           FIELD(CLSAGs)
+          FIELD(FCMPPlusProofs)
           FIELD(pseudoOuts)
         END_SERIALIZE()
     };
@@ -615,12 +658,12 @@ namespace rct {
 
         keyV& get_pseudo_outs()
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus || type == RCTTypeFcmpPlusPlus ? p.pseudoOuts : pseudoOuts;
         }
 
         keyV const& get_pseudo_outs() const
         {
-          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus ? p.pseudoOuts : pseudoOuts;
+          return type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus || type == RCTTypeFcmpPlusPlus ? p.pseudoOuts : pseudoOuts;
         }
 
         BEGIN_SERIALIZE_OBJECT()

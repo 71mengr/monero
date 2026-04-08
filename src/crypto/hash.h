@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2014-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -30,9 +30,8 @@
 
 #pragma once
 
-#include <iostream>
 #include <stddef.h>
-#include <stdexcept>
+#include <iostream>
 
 #include "common/pod-class.h"
 #include "generic-ops.h"
@@ -71,20 +70,11 @@ namespace crypto {
     return h;
   }
 
-  static constexpr void cn_variant1_check(const std::size_t length, const int variant)
-  {
-    // see VARIANT1_CHECK in slow-hash.c
-    if (variant == 1 && length < 43)
-      throw std::logic_error("Cryptonight variant 1 is undefined for inputs of less than 43 bytes");
-  }
-
   inline void cn_slow_hash(const void *data, std::size_t length, hash &hash, int variant = 0, uint64_t height = 0) {
-    cn_variant1_check(length, variant);
     cn_slow_hash(data, length, reinterpret_cast<char *>(&hash), variant, 0/*prehashed*/, height);
   }
 
   inline void cn_slow_hash_prehashed(const void *data, std::size_t length, hash &hash, int variant = 0, uint64_t height = 0) {
-    cn_variant1_check(length, variant);
     cn_slow_hash(data, length, reinterpret_cast<char *>(&hash), variant, 1/*prehashed*/, height);
   }
 
@@ -101,9 +91,6 @@ namespace crypto {
 
   constexpr static crypto::hash null_hash = {};
   constexpr static crypto::hash8 null_hash8 = {};
-
-  inline bool operator<(const hash &lhs, const hash &rhs) noexcept { return memcmp(&lhs, &rhs, sizeof(hash)) < 0; }
-  inline bool operator>(const hash &lhs, const hash &rhs) noexcept { return rhs < lhs; }
 }
 
 CRYPTO_MAKE_HASHABLE(hash)

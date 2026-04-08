@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2014-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -95,6 +95,10 @@ namespace crypto {
     friend class crypto_ops;
   };
 
+  POD_CLASS key_image_y: ec_point {
+    friend class crypto_ops;
+  };
+
   POD_CLASS signature {
     ec_scalar c, r;
     friend class crypto_ops;
@@ -110,7 +114,7 @@ namespace crypto {
 
   static_assert(sizeof(ec_point) == 32 && sizeof(ec_scalar) == 32 &&
     sizeof(public_key) == 32 && sizeof(public_key_memsafe) == 32 && sizeof(secret_key) == 32 &&
-    sizeof(key_derivation) == 32 && sizeof(key_image) == 32 &&
+    sizeof(key_derivation) == 32 && sizeof(key_image) == 32 && sizeof(key_image_y) == 32 &&
     sizeof(signature) == 64 && sizeof(view_tag) == 1, "Invalid structure size");
 
   class crypto_ops {
@@ -145,10 +149,10 @@ namespace crypto {
     friend void generate_tx_proof_v1(const hash &, const public_key &, const public_key &, const boost::optional<public_key> &, const public_key &, const secret_key &, signature &);
     static bool check_tx_proof(const hash &, const public_key &, const public_key &, const boost::optional<public_key> &, const public_key &, const signature &, const int);
     friend bool check_tx_proof(const hash &, const public_key &, const public_key &, const boost::optional<public_key> &, const public_key &, const signature &, const int);
+    static void derive_key_image_generator(const public_key &, ec_point &);
+    friend void derive_key_image_generator(const public_key &, ec_point &);
     static void generate_key_image(const public_key &, const secret_key &, key_image &);
-    static bool generate_key_image_fcmpp(const public_key &, const secret_key &, key_image &, uint64_t height);
     friend void generate_key_image(const public_key &, const secret_key &, key_image &);
-    friend bool generate_key_image_fcmpp(const public_key &, const secret_key &, key_image &, uint64_t height);
     static void generate_ring_signature(const hash &, const key_image &,
       const public_key *const *, std::size_t, const secret_key &, std::size_t, signature *);
     friend void generate_ring_signature(const hash &, const key_image &,
@@ -159,6 +163,10 @@ namespace crypto {
       const public_key *const *, std::size_t, const signature *);
     static void derive_view_tag(const key_derivation &, std::size_t, view_tag &);
     friend void derive_view_tag(const key_derivation &, std::size_t, view_tag &);
+    static bool key_image_to_y(const key_image &, key_image_y &);
+    friend bool key_image_to_y(const key_image &, key_image_y &);
+    static void key_image_from_y(const key_image_y &, const bool, key_image &);
+    friend void key_image_from_y(const key_image_y &, const bool, key_image &);
   };
 
   void generate_random_bytes_thread_safe(size_t N, uint8_t *bytes);
@@ -174,8 +182,8 @@ namespace crypto {
    */
   template<typename T>
   T rand() {
-    static_assert(std::is_standard_layout<T>(), "cannot write random bytes into non-standard layout type");
-    static_assert(std::is_trivially_copyable<T>(), "cannot write random bytes into non-trivially copyable type");
+    static_assert(std::is_standard_layout_v<T>, "cannot write random bytes into non-standard layout type");
+    static_assert(std::is_trivially_copyable_v<T>, "cannot write random bytes into non-trivially copyable type");
     typename std::remove_cv<T>::type res;
     generate_random_bytes_thread_safe(sizeof(T), (uint8_t*)&res);
     return res;
@@ -272,6 +280,10 @@ namespace crypto {
     return crypto_ops::check_tx_proof(prefix_hash, R, A, B, D, sig, version);
   }
 
+  inline void derive_key_image_generator(const public_key &pub, ec_point &ki_gen) {
+    crypto_ops::derive_key_image_generator(pub, ki_gen);
+  }
+
   /* To send money to a key:
    * * The sender generates an ephemeral key and includes it in transaction output.
    * * To spend the money, the receiver generates a key image from it.
@@ -280,12 +292,6 @@ namespace crypto {
    */
   inline void generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
     crypto_ops::generate_key_image(pub, sec, image);
-  }
-  inline bool generate_key_image_fcmpp(const public_key &pub, const secret_key &sec, key_image &image, uint64_t height) {
-    return crypto_ops::generate_key_image_fcmpp(pub, sec, image, height);
-  }
-  inline void key_image_to_y(key_image &image) {
-    image.data[31] &= 0x7f;
   }
   inline void generate_ring_signature(const hash &prefix_hash, const key_image &image,
     const public_key *const *pubs, std::size_t pubs_count,
@@ -321,6 +327,21 @@ namespace crypto {
     crypto_ops::derive_view_tag(derivation, output_index, vt);
   }
 
+  /** Clear the sign bit on the key image (i.e. get just the y coordinate).
+   * Return true if the sign bit is set, false if not.
+   * Since fcmp's allow construction of key images with sign bit cleared, while
+   * the same key image with sign bit set may already exist in the chain, we
+   * prevent double spends by converting all existing key images in the chain to
+   * their y coordinate and preventing duplicate key image y's.
+   */
+  inline bool key_image_to_y(const key_image &ki, key_image_y &ki_y) {
+    return crypto_ops::key_image_to_y(ki, ki_y);
+  }
+
+  inline void key_image_from_y(const key_image_y &ki_y, const bool sign, key_image &ki) {
+    return crypto_ops::key_image_from_y(ki_y, sign, ki);
+  }
+
   inline std::ostream &operator <<(std::ostream &o, const crypto::public_key &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
@@ -339,6 +360,9 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::key_image &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
+  inline std::ostream &operator <<(std::ostream &o, const crypto::key_image_y &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
   inline std::ostream &operator <<(std::ostream &o, const crypto::signature &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
@@ -351,11 +375,22 @@ namespace crypto {
 
   inline bool operator<(const public_key &p1, const public_key &p2) { return memcmp(&p1, &p2, sizeof(public_key)) < 0; }
   inline bool operator>(const public_key &p1, const public_key &p2) { return p2 < p1; }
+  inline bool operator<(const key_image &p1, const key_image &p2) { return memcmp(&p1, &p2, sizeof(key_image)) < 0; }
+  inline bool operator>(const key_image &p1, const key_image &p2) { return p2 < p1; }
+  inline bool operator<(const key_image_y &p1, const key_image_y &p2) { return memcmp(&p1, &p2, sizeof(key_image_y)) < 0; }
+  inline bool operator>(const key_image_y &p1, const key_image_y &p2) { return p2 < p1; }
 }
+
+// type conversions for easier calls to sc_add(), sc_sub(), hash functions
+inline unsigned char* to_bytes(crypto::ec_scalar &scalar) { return &reinterpret_cast<unsigned char&>(scalar); }
+inline const unsigned char* to_bytes(const crypto::ec_scalar &scalar) { return &reinterpret_cast<const unsigned char&>(scalar); }
+inline unsigned char* to_bytes(crypto::ec_point &point) { return &reinterpret_cast<unsigned char&>(point); }
+inline const unsigned char* to_bytes(const crypto::ec_point &point) { return &reinterpret_cast<const unsigned char&>(point); }
 
 CRYPTO_MAKE_HASHABLE(public_key)
 CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(secret_key)
 CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(public_key_memsafe)
 CRYPTO_MAKE_HASHABLE(key_image)
+CRYPTO_MAKE_HASHABLE(key_image_y)
 CRYPTO_MAKE_COMPARABLE(signature)
 CRYPTO_MAKE_COMPARABLE(view_tag)

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2014-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -37,7 +37,6 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include <boost/shared_ptr.hpp>
-#include <sodium/crypto_core_ed25519.h>
 
 #include "common/varint.h"
 #include "warnings.h"
@@ -619,88 +618,19 @@ namespace crypto {
     ge_p1p1_to_p3(&res, &point2);
   }
 
-  static bool use_fcmppp_key_image_scheme()
-  {
-    const char *value = std::getenv("MONERO_FCMPPP_KEY_IMAGE");
-    return value != nullptr && value[0] == '1';
-  }
-
-  static void generate_key_image_legacy(const public_key &pub, const secret_key &sec, key_image &image)
-  {
+  void crypto_ops::derive_key_image_generator(const public_key &pub, ec_point &ki_gen) {
     ge_p3 point;
-    ge_p2 point2;
     hash_to_ec(pub, point);
-    ge_scalarmult(&point2, &unwrap(sec), &point);
-    ge_tobytes(&image, &point2);
-  }
-
-  static void generate_key_image_fcmpp_inner(const public_key &pub, const secret_key &sec, key_image &image)
-  {
-    ge_p3 hp_point;
-    ge_p2 r_hp;
-    ge_p3 r_g_p3;
-    public_key r_g;
-    key_image r_hp_bytes;
-    hash nonce_hash;
-    struct nonce_material
-    {
-      secret_key sec;
-      public_key pub;
-    } material{sec, pub};
-    cn_fast_hash(&material, sizeof(material), nonce_hash);
-
-    // libsodium scalar reduction for deterministic nonce material.
-    unsigned char wide_nonce[crypto_core_ed25519_NONREDUCEDSCALARBYTES] = {0};
-    memcpy(wide_nonce, &nonce_hash, sizeof(nonce_hash));
-    ec_scalar r;
-    crypto_core_ed25519_scalar_reduce(reinterpret_cast<unsigned char *>(&r), wide_nonce);
-    memwipe(wide_nonce, sizeof(wide_nonce));
-
-    ge_scalarmult_base(&r_g_p3, &r);
-    ge_p3_tobytes(&r_g, &r_g_p3);
-    hash_to_ec(pub, hp_point);
-    ge_scalarmult(&r_hp, &r, &hp_point);
-    ge_tobytes(&r_hp_bytes, &r_hp);
-
-    struct fcmppp_pedersen_commitment_buffer
-    {
-      public_key rG;
-      key_image rHp;
-    } commitment_buf{r_g, r_hp_bytes};
-    key_image pedersen_commitment;
-    hash_to_scalar(&commitment_buf, sizeof(commitment_buf), reinterpret_cast<ec_scalar &>(pedersen_commitment));
-
-    struct fcmppp_linking_tag_buffer
-    {
-      key_image commitment;
-      public_key output;
-    } linking_tag_buf{pedersen_commitment, pub};
-    hash_to_scalar(&linking_tag_buf, sizeof(linking_tag_buf), reinterpret_cast<ec_scalar &>(image));
-
-    key_image_to_y(image);
-    memwipe(&r, sizeof(r));
-  }
-
-  bool crypto_ops::generate_key_image_fcmpp(const public_key &pub, const secret_key &sec, key_image &image, uint64_t height)
-  {
-    assert(sc_check(&sec) == 0);
-    if (!use_fcmpp(height))
-    {
-      generate_key_image_legacy(pub, sec, image);
-      return false;
-    }
-    generate_key_image_fcmpp_inner(pub, sec, image);
-    return true;
+    ge_p3_tobytes(&ki_gen, &point);
   }
 
   void crypto_ops::generate_key_image(const public_key &pub, const secret_key &sec, key_image &image) {
+    ge_p3 point;
+    ge_p2 point2;
     assert(sc_check(&sec) == 0);
-    if (!use_fcmppp_key_image_scheme())
-    {
-      generate_key_image_legacy(pub, sec, image);
-      return;
-    }
-    generate_key_image_fcmpp_inner(pub, sec, image);
+    hash_to_ec(pub, point);
+    ge_scalarmult(&point2, &unwrap(sec), &point);
+    ge_tobytes(&image, &point2);
   }
 
 PUSH_WARNINGS
@@ -848,5 +778,22 @@ POP_WARNINGS
     // only need a slice of view_tag_full to realize optimal perf/space efficiency
     static_assert(sizeof(crypto::view_tag) <= sizeof(view_tag_full), "view tag should not be larger than hash result");
     memcpy(&view_tag, &view_tag_full, sizeof(crypto::view_tag));
+  }
+
+  bool crypto_ops::key_image_to_y(const key_image &ki, key_image_y &ki_y) {
+    static_assert(sizeof(key_image) == 32 && sizeof(key_image_y) == 32, "unexpected size of key image");
+    memcpy(&ki_y, &ki, 32);
+    // clear the sign bit, leaving us with the y coord
+    ki_y.data[31] &= 0x7F;
+    // return true if sign bit is set on the original key image
+    return (ki.data[31] & 0x80) > 0;
+  }
+
+  void crypto_ops::key_image_from_y(const key_image_y &ki_y, const bool sign, key_image &ki) {
+    static_assert(sizeof(key_image) == 32 && sizeof(key_image_y) == 32, "unexpected size of key image");
+    memcpy(&ki, &ki_y, 32);
+    if (sign) {
+      ki.data[31] ^= 0x80;
+    }
   }
 }

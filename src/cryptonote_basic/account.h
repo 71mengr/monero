@@ -44,6 +44,7 @@ namespace cryptonote
     crypto::secret_key   m_view_secret_key;
     std::vector<crypto::secret_key> m_multisig_keys;
     bool m_is_carrot = false;
+    crypto::secret_key m_carrot_forward_secret = crypto::null_skey;
     hw::device *m_device = &hw::get_device("default");
     crypto::chacha_iv m_encryption_iv;
 
@@ -53,6 +54,7 @@ namespace cryptonote
       KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_view_secret_key)
       KV_SERIALIZE_CONTAINER_POD_AS_BLOB(m_multisig_keys)
       KV_SERIALIZE_OPT(m_is_carrot, false)
+      KV_SERIALIZE_VAL_POD_AS_BLOB_OPT(m_carrot_forward_secret, crypto::null_skey)
       const crypto::chacha_iv default_iv{{0, 0, 0, 0, 0, 0, 0, 0}};
       KV_SERIALIZE_VAL_POD_AS_BLOB_OPT(m_encryption_iv, default_iv)
     END_KV_SERIALIZE_MAP()
@@ -83,6 +85,7 @@ namespace cryptonote
     void create_from_viewkey(const cryptonote::account_public_address& address, const crypto::secret_key& viewkey);
     bool make_multisig(const crypto::secret_key &view_secret_key, const crypto::secret_key &spend_secret_key, const crypto::public_key &spend_public_key, const std::vector<crypto::secret_key> &multisig_keys);
     const account_keys& get_keys() const;
+    account_keys& get_keys_mutable();
     std::string get_public_address_str(network_type nettype) const;
     std::string get_public_integrated_address_str(const crypto::hash8 &payment_id, network_type nettype) const;
 

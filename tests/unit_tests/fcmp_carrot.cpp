@@ -14,8 +14,11 @@ TEST(FCMPPlus, KeyImagePedersenToggle)
   crypto::generate_keys(pub, sec);
 
   unsetenv("MONERO_FCMPPP_KEY_IMAGE");
+  crypto::key_image legacy_expected;
+  crypto::generate_key_image(pub, sec, legacy_expected);
   crypto::key_image legacy;
   crypto::generate_key_image(pub, sec, legacy);
+  ASSERT_EQ(legacy_expected, legacy);
 
   setenv("MONERO_FCMPPP_KEY_IMAGE", "1", 1);
   crypto::key_image fcmp;
@@ -27,16 +30,30 @@ TEST(FCMPPlus, KeyImagePedersenToggle)
 
 TEST(FCMPPlus, InnerProductCompositionProofRoundTrip)
 {
-  crypto::public_key pub0, pub1;
-  crypto::secret_key sec0, sec1;
-  crypto::generate_keys(pub0, sec0);
-  crypto::generate_keys(pub1, sec1);
+  rct::keyV ring;
+  ring.reserve(16);
+  crypto::secret_key target_secret;
+  unsigned int secret_index = 7;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    crypto::public_key pub;
+    crypto::secret_key sec;
+    crypto::generate_keys(pub, sec);
+    if (i == secret_index)
+      target_secret = sec;
+    ring.push_back(rct::pk2rct(pub));
+  }
 
-  rct::keyV ring{rct::pk2rct(pub0), rct::pk2rct(pub1)};
-  const rct::key message = rct::hash_to_scalar(rct::pk2rct(pub0));
-  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(sec1), 1);
+  const rct::key message = rct::hash_to_scalar(ring[0]);
+  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(target_secret), secret_index);
 
   ASSERT_TRUE(rct::FCMPPlus_Ver(message, ring, proof));
+  rct::keyV wrong_ring = ring;
+  crypto::public_key replacement_pub;
+  crypto::secret_key replacement_sec;
+  crypto::generate_keys(replacement_pub, replacement_sec);
+  wrong_ring[secret_index] = rct::pk2rct(replacement_pub);
+  ASSERT_FALSE(rct::FCMPPlus_Ver(message, wrong_ring, proof));
 }
 
 TEST(CarrotWallet, AccountKeysDefaultCompatibility)

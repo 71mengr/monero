@@ -33,6 +33,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
+#include "cryptonote_config.h"
 
 #include "lmdb/db_lmdb.h"
 
@@ -45,18 +46,34 @@ namespace cryptonote
 {
 namespace
 {
-  crypto::secret_key derive_carrot_output_shared_secret(const crypto::hash &tx_hash, const crypto::public_key &view_key)
+  crypto::secret_key derive_carrot_output_shared_secret(const crypto::hash &nonce, const crypto::public_key &view_key)
   {
     struct shared_secret_input
     {
       crypto::hash nonce;
       crypto::public_key view_key;
-    } input{tx_hash, view_key};
+    } input{nonce, view_key};
 
     crypto::ec_scalar scalar;
     crypto::hash_to_scalar(&input, sizeof(input), scalar);
     crypto::secret_key result;
     static_assert(sizeof(result) == sizeof(scalar), "Unexpected scalar/key size mismatch");
+    memcpy(&result, &scalar, sizeof(result));
+    return result;
+  }
+
+  crypto::secret_key derive_legacy_output_shared_secret(const crypto::hash &tx_hash, const crypto::public_key &view_key)
+  {
+    struct legacy_shared_secret_input
+    {
+      crypto::hash tx_hash;
+      crypto::public_key view_key;
+      char domain[3];
+    } input{tx_hash, view_key, {'d', 'h', 0}};
+
+    crypto::ec_scalar scalar;
+    crypto::hash_to_scalar(&input, sizeof(input), scalar);
+    crypto::secret_key result;
     memcpy(&result, &scalar, sizeof(result));
     return result;
   }
@@ -247,7 +264,10 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     const txout_to_key *out_key = boost::get<txout_to_key>(&tx.vout[0].target);
     if (out_key != nullptr)
     {
-      const crypto::secret_key output_shared_secret = derive_carrot_output_shared_secret(tx_hash, out_key->key);
+      const bool use_carrot_symmetric = m_hardfork != nullptr && m_hardfork->get_current_version() >= HF_VERSION_FCMPPP;
+      const crypto::secret_key output_shared_secret = use_carrot_symmetric
+        ? derive_carrot_output_shared_secret(tx_hash, out_key->key)
+        : derive_legacy_output_shared_secret(tx_hash, out_key->key);
       (void)output_shared_secret;
     }
   }

@@ -199,6 +199,7 @@
 #define HF_VERSION_VIEW_TAGS                    16
 #define HF_VERSION_2021_SCALING                 16
 #define HF_VERSION_MASTERNODE_REWARD_SPLIT      17
+#define HF_VERSION_FCMPPP                       18
 #define HF_MN_REG                               17
 #define HF_VERSION_MN_REG                       HF_MN_REG
 

@@ -1519,12 +1519,20 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
 cryptonote::account_public_address wallet2::generate_carrot_stealth_address(uint64_t account, uint64_t address_index) const
 {
   const account_keys &keys = get_account().get_keys();
-  struct carrot_input
+  struct carrot_nonce_input
   {
-    crypto::secret_key view;
+    crypto::secret_key forward_secret;
     uint64_t account;
     uint64_t index;
-  } in{keys.m_view_secret_key, account, address_index};
+  } nonce_in{keys.m_carrot_forward_secret == crypto::null_skey ? keys.m_view_secret_key : keys.m_carrot_forward_secret, account, address_index};
+  crypto::hash nonce;
+  crypto::cn_fast_hash(&nonce_in, sizeof(nonce_in), nonce);
+
+  struct carrot_input
+  {
+    crypto::hash nonce;
+    crypto::secret_key view;
+  } in{nonce, keys.m_view_secret_key};
 
   crypto::ec_scalar spend_scalar;
   crypto::hash_to_scalar(&in, sizeof(in), spend_scalar);
@@ -7711,6 +7719,21 @@ void wallet2::commit_tx(pending_tx& ptx)
   {
     m_tx_keys[txid] = ptx.tx_key;
     m_additional_tx_keys[txid] = ptx.additional_tx_keys;
+  }
+
+  if (use_fork_rules(HF_VERSION_FCMPPP, 0))
+  {
+    cryptonote::account_keys &mutable_keys = m_account.get_keys_mutable();
+    const crypto::secret_key prior = mutable_keys.m_carrot_forward_secret == crypto::null_skey ? mutable_keys.m_view_secret_key : mutable_keys.m_carrot_forward_secret;
+    struct carrot_forward_input
+    {
+      crypto::secret_key prior;
+      crypto::hash txid;
+      crypto::secret_key tx_key;
+    } in{prior, txid, ptx.tx_key};
+    crypto::ec_scalar next_scalar;
+    crypto::hash_to_scalar(&in, sizeof(in), next_scalar);
+    memcpy(&mutable_keys.m_carrot_forward_secret, &next_scalar, sizeof(mutable_keys.m_carrot_forward_secret));
   }
 
   LOG_PRINT_L2("transaction " << txid << " generated ok and sent to daemon, key_images: [" << ptx.key_images << "]");

@@ -269,6 +269,11 @@ DISABLE_VS_WARNINGS(4244 4345)
     return m_keys;
   }
   //-----------------------------------------------------------------
+  account_keys& account_base::get_keys_mutable()
+  {
+    return m_keys;
+  }
+  //-----------------------------------------------------------------
   std::string account_base::get_public_address_str(network_type nettype) const
   {
     //TODO: change this code into base 58

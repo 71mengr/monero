@@ -374,32 +374,45 @@ namespace rct {
         CHECK_AND_ASSERT_THROW_MES(secret_index < P.size(), "FCMP++ secret index out of range");
 
         fcmpplus_proof proof{};
-        key alpha = skGen();
-        key alpha_G;
+        proof.B = P[secret_index];
+        key alpha = skGen(), alpha_G;
         scalarmultBase(alpha_G, alpha);
         proof.A = alpha_G;
 
-        const size_t rounds = static_cast<size_t>(std::ceil(std::log2(P.size())));
-        proof.L.reserve(rounds);
-        proof.R.reserve(rounds);
-        key challenge_seed = hash_to_scalar(keysV{message, proof.A, P[secret_index]});
-        for (size_t i = 0; i < rounds; ++i)
+        keyV current = P;
+        size_t idx = secret_index;
+        while (current.size() > 1)
         {
-            ge_p3 li_p3, ri_p3;
-            key li, ri;
-            hash_to_p3(li_p3, P[(secret_index + i) % P.size()]);
-            hash_to_p3(ri_p3, P[(secret_index + P.size() - (i % P.size())) % P.size()]);
-            ge_p3_tobytes(li.bytes, &li_p3);
-            ge_p3_tobytes(ri.bytes, &ri_p3);
-            proof.L.push_back(li);
-            proof.R.push_back(ri);
-            challenge_seed = hash_to_scalar(keysV{challenge_seed, li, ri});
+            if (current.size() & 1)
+                current.push_back(current.back());
+
+            const size_t sibling = idx ^ 1;
+            proof.L.push_back(current[sibling]);
+            proof.R.push_back((idx & 1) ? G : identity());
+
+            key left = (idx & 1) ? current[sibling] : current[idx];
+            key right = (idx & 1) ? current[idx] : current[sibling];
+            key parent_scalar = hash_to_scalar(keysV{left, right});
+            key parent;
+            scalarmultBase(parent, parent_scalar);
+
+            keyV next;
+            next.reserve(current.size() / 2);
+            for (size_t i = 0; i < current.size(); i += 2)
+            {
+                key node_scalar = hash_to_scalar(keysV{current[i], current[i + 1]});
+                key node;
+                scalarmultBase(node, node_scalar);
+                next.push_back(node);
+            }
+            current = std::move(next);
+            idx >>= 1;
+            current[idx] = parent;
         }
-        proof.c0 = challenge_seed;
-        sc_mulsub(proof.z.bytes, proof.c0.bytes, secret.bytes, alpha.bytes);
-        ge_p3 b_p3;
-        hash_to_p3(b_p3, P[secret_index]);
-        ge_p3_tobytes(proof.B.bytes, &b_p3);
+
+        proof.c0 = current[0];
+        const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
+        sc_mulsub(proof.z.bytes, challenge.bytes, secret.bytes, alpha.bytes);
         return proof;
     }
 
@@ -407,15 +420,29 @@ namespace rct {
     {
         CHECK_AND_ASSERT_MES(!P.empty(), false, "FCMP++ ring is empty");
         CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), false, "FCMP++ proof dimensions mismatch");
-
-        key challenge = hash_to_scalar(keysV{message, proof.A, P[0]});
+        key node = proof.B;
         for (size_t i = 0; i < proof.L.size(); ++i)
-            challenge = hash_to_scalar(keysV{challenge, proof.L[i], proof.R[i]});
-        CHECK_AND_ASSERT_MES(equalKeys(challenge, proof.c0), false, "FCMP++ challenge mismatch");
+        {
+            key left, right;
+            if (equalKeys(proof.R[i], G))
+            {
+                left = proof.L[i];
+                right = node;
+            }
+            else
+            {
+                left = node;
+                right = proof.L[i];
+            }
+            key parent_scalar = hash_to_scalar(keysV{left, right});
+            scalarmultBase(node, parent_scalar);
+        }
+        CHECK_AND_ASSERT_MES(equalKeys(node, proof.c0), false, "FCMP++ Merkle root mismatch");
 
+        const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
         key lhs;
-        addKeys2(lhs, proof.z, proof.c0, P[0]);
-        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
+        addKeys2(lhs, proof.z, challenge, proof.B);
+        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ Schnorr relation mismatch");
         return true;
     }
 

@@ -178,6 +178,31 @@ TEST(FCMPPlus, LinkingTagDoubleSpendDetected)
   ASSERT_FALSE(rct::FCMPPlus_Ver(message, ring, proof));
 }
 
+TEST(FCMPPlus, ProofFailsForWrongMessage)
+{
+  rct::keyV ring;
+  ring.reserve(16);
+
+  crypto::secret_key real_secret;
+  constexpr unsigned int real_index = 6;
+  for (size_t i = 0; i < 16; ++i)
+  {
+    crypto::public_key pub;
+    crypto::secret_key sec;
+    crypto::generate_keys(pub, sec);
+    if (i == real_index)
+      real_secret = sec;
+    ring.push_back(rct::pk2rct(pub));
+  }
+
+  rct::FCMPPlus_ResetUsedLinkingTags();
+  const rct::key message = rct::hash_to_scalar(ring[0]);
+  const rct::fcmpplus_proof proof = rct::FCMPPlus_Gen(message, ring, rct::sk2rct(real_secret), real_index);
+  const rct::key wrong_message = rct::hash_to_scalar(ring[1]);
+
+  ASSERT_FALSE(rct::FCMPPlus_Ver(wrong_message, ring, proof));
+}
+
 TEST(CarrotWallet, AccountKeysDefaultCompatibility)
 {
   cryptonote::account_keys keys{};

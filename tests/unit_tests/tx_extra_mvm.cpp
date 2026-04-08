@@ -91,6 +91,18 @@ TEST(TxExtraMvm, create_contract_requires_bytecode)
   ASSERT_TRUE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
 }
 
+TEST(TxExtraMvm, create_contract_rejects_non_hex_bytecode)
+{
+  std::vector<uint8_t> extra;
+  cryptonote::tx_extra_mvm_contract invalid{};
+  invalid.version = cryptonote::TX_EXTRA_MVM_CONTRACT_VERSION;
+  invalid.action = "create_contract";
+  invalid.contract_id = "mvmc_bad_hex";
+  invalid.code_hash = "abc123";
+  invalid.bytecode_hex = "60GG";
+  ASSERT_FALSE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
+}
+
 TEST(TxExtraMvm, supply_and_amount_have_upper_bounds)
 {
   std::vector<uint8_t> extra;
@@ -120,5 +132,21 @@ TEST(TxExtraMvm, rejects_invalid_monero_txid)
   invalid.token_supply = 1000;
   invalid.bytecode_hex = "6001600201";
   invalid.monero_txid = "xyz-not-hex";
+  ASSERT_FALSE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
+}
+
+TEST(TxExtraMvm, create_token_rejects_decimals_above_limit)
+{
+  std::vector<uint8_t> extra;
+  cryptonote::tx_extra_mvm_contract invalid{};
+  invalid.version = cryptonote::TX_EXTRA_MVM_CONTRACT_VERSION;
+  invalid.action = "create_token";
+  invalid.contract_id = "mvmc_token_decimals";
+  invalid.code_hash = "abc123";
+  invalid.token_symbol = "USDT";
+  invalid.token_supply = 1000;
+  invalid.token_decimals = 31;
+  invalid.bytecode_hex = "6001600201";
+
   ASSERT_FALSE(cryptonote::add_mvm_contract_to_tx_extra(extra, invalid));
 }

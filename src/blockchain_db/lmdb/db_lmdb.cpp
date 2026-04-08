@@ -33,6 +33,7 @@
 #include <boost/circular_buffer.hpp>
 #include <memory>  // std::unique_ptr
 #include <cstring>  // memcpy
+#include <limits>
 
 #ifdef WIN32
 #include <winioctl.h>
@@ -243,10 +244,23 @@ const char* const LMDB_HF_VERSIONS = "hf_versions";
 const char* const LMDB_PROPERTIES = "properties";
 const char* const LMDB_CURVE_TREE_LEAVES = "curve_tree_leaves";
 const char* const LMDB_CURVE_TREE_NODES = "curve_tree_nodes";
+const char* const LMDB_LOCKED_OUTPUTS = "locked_outputs";
 const char* const LMDB_MASTERNODE_PREFIX = "masternode:";
 
 const char zerokey[8] = {0};
 const MDB_val zerokval = { sizeof(zerokey), (void *)zerokey };
+
+#pragma pack(push, 1)
+struct locked_output_data_t
+{
+  uint64_t last_locked_block_id;
+  uint64_t amount;
+  uint64_t unlock_time;
+  uint64_t height;
+  uint8_t is_coinbase;
+  crypto::public_key out_key;
+};
+#pragma pack(pop)
 
 const std::string lmdb_error(const std::string& error_string, int mdb_res)
 {
@@ -260,6 +274,17 @@ inline void lmdb_db_open(MDB_txn* txn, const char* name, int flags, MDB_dbi& dbi
     throw0(cryptonote::DB_OPEN_FAILURE((lmdb_error(error_string + " : ", res) + std::string(" - you may want to start with --db-salvage")).c_str()));
 }
 
+inline std::string fcmpp_prop_key(const std::string &suffix)
+{
+  return std::string{"fcmpp."} + suffix;
+}
+
+inline uint64_t fcmpp_node_db_key(uint64_t layer_idx, uint64_t node_idx)
+{
+  CHECK_AND_ASSERT_THROW_MES(node_idx <= std::numeric_limits<uint32_t>::max(), "node index overflow for LMDB integer key");
+  CHECK_AND_ASSERT_THROW_MES(layer_idx <= std::numeric_limits<uint32_t>::max(), "layer index overflow for LMDB integer key");
+  return (layer_idx << 32) | node_idx;
+}
 
 }  // anonymous namespace
 
@@ -1526,12 +1551,15 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   lmdb_db_open(txn, LMDB_CURVE_TREE_LEAVES, MDB_INTEGERKEY | MDB_CREATE, m_curve_tree_leaves, "Failed to open db handle for m_curve_tree_leaves");
   lmdb_db_open(txn, LMDB_CURVE_TREE_NODES, MDB_INTEGERKEY | MDB_CREATE, m_curve_tree_nodes, "Failed to open db handle for m_curve_tree_nodes");
 
+  lmdb_db_open(txn, LMDB_LOCKED_OUTPUTS, MDB_INTEGERKEY | MDB_DUPSORT | MDB_CREATE, m_locked_outputs, "Failed to open db handle for m_locked_outputs");
+
   mdb_set_dupsort(txn, m_spent_keys, compare_hash32);
   mdb_set_dupsort(txn, m_block_heights, compare_hash32);
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
   mdb_set_dupsort(txn, m_output_amounts, compare_uint64);
   mdb_set_dupsort(txn, m_output_txs, compare_uint64);
   mdb_set_dupsort(txn, m_block_info, compare_uint64);
+  mdb_set_dupsort(txn, m_locked_outputs, compare_uint64);
   if (!(mdb_flags & MDB_RDONLY))
     mdb_set_dupsort(txn, m_txs_prunable_tip, compare_uint64);
   mdb_set_compare(txn, m_txs_prunable, compare_uint64);
@@ -1717,6 +1745,9 @@ void BlockchainLMDB::reset()
     throw0(DB_ERROR(lmdb_error("Failed to drop m_curve_tree_leaves: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_curve_tree_nodes, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_curve_tree_nodes: ", result).c_str()));
+  if (auto result = mdb_drop(txn, m_locked_outputs, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_locked_outputs: ", result).c_str()));
+
   // init with current version
   MDB_val_str(k, "version");
   MDB_val_copy<uint32_t> v(VERSION);
@@ -4320,7 +4351,8 @@ void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
   try
   {
     BlockchainDB::pop_block(blk, txs);
-
+    if (height() > 0 && use_fcmpp(height() - 1))
+      trim_block(height() - 1);
     std::size_t removed_leaves = 0;
     const auto count_leaves = [&](const transaction &tx)
     {
@@ -4427,6 +4459,449 @@ void BlockchainLMDB::trim_curve_tree_leaves(std::size_t leaves_to_remove)
   }
 
   TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+void BlockchainLMDB::add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple)
+{
+  check_open();
+  const uint64_t blockchain_height = height();
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(blockchain_height), "add_curve_tree_leaf called pre-fork");
+  TXN_BLOCK_PREFIX(0);
+
+  MDB_stat db_stats;
+  int result = mdb_stat(*txn_ptr, m_curve_tree_leaves, &db_stats);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to stat curve_tree_leaves: ", result));
+  const uint64_t leaf_idx = db_stats.ms_entries;
+  MDB_val_set(k, leaf_idx);
+  MDB_val v{sizeof(output_tuple), const_cast<rct::fcmp_pp::output_tuple *>(&output_tuple)};
+  result = mdb_put(*txn_ptr, m_curve_tree_leaves, &k, &v, MDB_NODUPDATA);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed writing curve tree leaf: ", result));
+
+  const uint64_t n_leaf_tuples = leaf_idx + 1;
+  MDB_val_str(k_total, "fcmpp.n_leaf_tuples");
+  MDB_val_copy<uint64_t> v_total(n_leaf_tuples);
+  result = mdb_put(*txn_ptr, m_properties, &k_total, &v_total, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed writing total leaf tuple count: ", result));
+
+  const std::string block_key = fcmpp_prop_key("block." + std::to_string(blockchain_height) + ".n_leaf_tuples");
+  MDB_val_str(k_block, block_key.c_str());
+  MDB_val_copy<uint64_t> v_block(n_leaf_tuples);
+  result = mdb_put(*txn_ptr, m_properties, &k_block, &v_block, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed writing per-block leaf tuple count: ", result));
+  TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+rct::key BlockchainLMDB::get_curve_tree_root(uint64_t height) const
+{
+  if (!use_fcmpp(height))
+    return rct::zero();
+  const crypto::ec_point root = get_tree_root(height);
+  rct::key out;
+  memcpy(&out, &root, sizeof(out));
+  return out;
+}
+
+void BlockchainLMDB::rebuild_curve_tree()
+{
+  check_open();
+  const uint64_t blockchain_height = height();
+  if (!use_fcmpp(blockchain_height))
+    return;
+
+  std::vector<rct::fcmp_pp::output_tuple> leaves;
+  TXN_PREFIX_RDONLY();
+  RCURSOR(curve_tree_leaves);
+  MDB_val k;
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_curve_tree_leaves, &k, &v, MDB_FIRST);
+  while (result == MDB_SUCCESS)
+  {
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(rct::fcmp_pp::output_tuple), "invalid curve tree leaf size");
+    leaves.emplace_back(*reinterpret_cast<const rct::fcmp_pp::output_tuple *>(v.mv_data));
+    result = mdb_cursor_get(m_cur_curve_tree_leaves, &k, &v, MDB_NEXT);
+  }
+  CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed iterating curve tree leaves: ", result));
+  TXN_POSTFIX_RDONLY();
+
+  mdb_txn_safe txn;
+  result = lmdb_txn_begin(m_env, NULL, 0, txn);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to begin rebuild_curve_tree transaction: ", result));
+  result = mdb_drop(txn, m_curve_tree_nodes, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to clear curve_tree_nodes: ", result));
+
+  const rct::key root = rct::fcmp_pp::compute_root(leaves);
+  crypto::ec_point root_point;
+  memcpy(&root_point, &root, sizeof(root_point));
+  uint64_t root_key = fcmpp_node_db_key(0, 0);
+  MDB_val k_root{sizeof(root_key), &root_key};
+  MDB_val v_root{sizeof(root_point), &root_point};
+  result = mdb_put(txn, m_curve_tree_nodes, &k_root, &v_root, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to write curve tree root node: ", result));
+
+  MDB_val_str(k_count, "fcmpp.layer.0.node_count");
+  MDB_val_copy<uint64_t> v_count(uint64_t{1});
+  result = mdb_put(txn, m_properties, &k_count, &v_count, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed writing root node count: ", result));
+  txn.commit();
+}
+
+template<typename C>
+void BlockchainLMDB::grow_layer(const std::unique_ptr<C> &/*curve*/, const std::vector<crypto::ec_point> &nodes, const uint64_t layer_idx)
+{
+  check_open();
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "grow_layer called pre-fork");
+  TXN_BLOCK_PREFIX(0);
+
+  MDB_cursor *cur_nodes;
+  int result = mdb_cursor_open(*txn_ptr, m_curve_tree_nodes, &cur_nodes);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to open curve_tree_nodes cursor: ", result));
+
+  const std::string count_key = fcmpp_prop_key("layer." + std::to_string(layer_idx) + ".node_count");
+  MDB_val_str(k_count, count_key.c_str());
+  MDB_val v_count;
+  uint64_t node_count = 0;
+  result = mdb_get(*txn_ptr, m_properties, &k_count, &v_count);
+  if (result == MDB_SUCCESS)
+    memcpy(&node_count, v_count.mv_data, sizeof(node_count));
+  else
+    CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed to read layer node count: ", result));
+
+  for (const auto &node: nodes)
+  {
+    uint64_t db_key = fcmpp_node_db_key(layer_idx, node_count++);
+    MDB_val mdb_k{sizeof(db_key), &db_key};
+    MDB_val mdb_v{sizeof(node), const_cast<crypto::ec_point *>(&node)};
+    result = mdb_cursor_put(cur_nodes, &mdb_k, &mdb_v, 0);
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to append curve tree node: ", result));
+  }
+
+  MDB_val_copy<uint64_t> new_count(node_count);
+  result = mdb_put(*txn_ptr, m_properties, &k_count, &new_count, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to update layer node count: ", result));
+  TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+template<typename C>
+void BlockchainLMDB::trim_layer(const std::unique_ptr<C> &/*curve*/, const fcmp_pp::curve_trees::LayerReduction<C> &layer_reduction, const uint64_t layer_idx)
+{
+  check_open();
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "trim_layer called pre-fork");
+  TXN_BLOCK_PREFIX(0);
+
+  MDB_cursor *cur_nodes;
+  int result = mdb_cursor_open(*txn_ptr, m_curve_tree_nodes, &cur_nodes);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to open curve_tree_nodes cursor: ", result));
+
+  const std::string count_key = fcmpp_prop_key("layer." + std::to_string(layer_idx) + ".node_count");
+  MDB_val_str(k_count, count_key.c_str());
+  MDB_val v_count;
+  uint64_t node_count = 0;
+  result = mdb_get(*txn_ptr, m_properties, &k_count, &v_count);
+  if (result == MDB_SUCCESS)
+    memcpy(&node_count, v_count.mv_data, sizeof(node_count));
+  else
+    CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed to read layer node count: ", result));
+
+  CHECK_AND_ASSERT_THROW_MES(layer_reduction.new_node_count <= node_count, "trim_layer new_node_count exceeds current node count");
+  for (uint64_t idx = layer_reduction.new_node_count; idx < node_count; ++idx)
+  {
+    uint64_t db_key = fcmpp_node_db_key(layer_idx, idx);
+    MDB_val mdb_k{sizeof(db_key), &db_key};
+    result = mdb_cursor_get(cur_nodes, &mdb_k, nullptr, MDB_SET_KEY);
+    if (result == MDB_NOTFOUND)
+      continue;
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed locating node for trimming: ", result));
+    result = mdb_cursor_del(cur_nodes, 0);
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed deleting node during trim: ", result));
+  }
+
+  MDB_val_copy<uint64_t> new_count(layer_reduction.new_node_count);
+  result = mdb_put(*txn_ptr, m_properties, &k_count, &new_count, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to persist trimmed node count: ", result));
+
+  const std::string hash_key = fcmpp_prop_key("layer." + std::to_string(layer_idx) + ".last_hash");
+  MDB_val_str(k_hash, hash_key.c_str());
+  crypto::hash last_hash = null_hash;
+  if (!layer_reduction.trim_instructions.empty())
+    memcpy(&last_hash, &layer_reduction.trim_instructions.back(), std::min(sizeof(last_hash), sizeof(layer_reduction.trim_instructions.back())));
+  MDB_val v_hash{sizeof(last_hash), &last_hash};
+  result = mdb_put(*txn_ptr, m_properties, &k_hash, &v_hash, 0);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed to persist trimmed layer hash: ", result));
+
+  TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+void BlockchainLMDB::trim_block(uint64_t block_height)
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(block_height), "trim_block called pre-fork");
+  const uint64_t new_n_leaf_tuples = get_block_n_leaf_tuples(block_height);
+  auto reduction = get_tree_reduction<int>(new_n_leaf_tuples);
+  const std::unique_ptr<int> dummy_curve(new int(0));
+  for (uint64_t layer_idx = 0; layer_idx < reduction.layers.size(); ++layer_idx)
+    trim_layer<int>(dummy_curve, reduction.layers[layer_idx], layer_idx);
+}
+
+template<typename C>
+fcmp_pp::curve_trees::TreeReduction<C> BlockchainLMDB::get_tree_reduction(uint64_t new_n_leaf_tuples) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "get_tree_reduction called pre-fork");
+  fcmp_pp::curve_trees::TreeReduction<C> out;
+  uint64_t width = std::max<uint64_t>(new_n_leaf_tuples, 1);
+  while (width > 1)
+  {
+    fcmp_pp::curve_trees::LayerReduction<C> layer;
+    layer.new_node_count = width;
+    layer.trim_instructions.push_back(width);
+    out.layers.push_back(layer);
+    width = (width + 1) / 2;
+  }
+  fcmp_pp::curve_trees::LayerReduction<C> root;
+  root.new_node_count = 1;
+  root.trim_instructions.push_back(1);
+  out.layers.push_back(root);
+  return out;
+}
+
+uint64_t BlockchainLMDB::get_n_leaf_tuples() const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "get_n_leaf_tuples called pre-fork");
+  TXN_PREFIX_RDONLY();
+  MDB_val_str(k, "fcmpp.n_leaf_tuples");
+  MDB_val v;
+  int result = mdb_get(m_txn, m_properties, &k, &v);
+  if (result == MDB_NOTFOUND)
+  {
+    MDB_stat db_stats;
+    result = mdb_stat(m_txn, m_curve_tree_leaves, &db_stats);
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading curve_tree_leaves stat: ", result));
+    TXN_POSTFIX_RDONLY();
+    return db_stats.ms_entries;
+  }
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading n_leaf_tuples: ", result));
+  uint64_t n = 0;
+  memcpy(&n, v.mv_data, sizeof(n));
+  TXN_POSTFIX_RDONLY();
+  return n;
+}
+
+uint64_t BlockchainLMDB::get_block_n_leaf_tuples(uint64_t block_height) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(block_height), "get_block_n_leaf_tuples called pre-fork");
+  TXN_PREFIX_RDONLY();
+  const std::string key = fcmpp_prop_key("block." + std::to_string(block_height) + ".n_leaf_tuples");
+  MDB_val_str(k, key.c_str());
+  MDB_val v;
+  int result = mdb_get(m_txn, m_properties, &k, &v);
+  if (result == MDB_NOTFOUND)
+    return 0;
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading block n_leaf_tuples: ", result));
+  uint64_t n = 0;
+  memcpy(&n, v.mv_data, sizeof(n));
+  TXN_POSTFIX_RDONLY();
+  return n;
+}
+
+crypto::ec_point BlockchainLMDB::get_tree_root(uint64_t height) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height), "get_tree_root called pre-fork");
+  TXN_PREFIX_RDONLY();
+  RCURSOR(curve_tree_nodes);
+  uint64_t db_key = fcmpp_node_db_key(0, 0);
+  MDB_val k{sizeof(db_key), &db_key};
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_curve_tree_nodes, &k, &v, MDB_SET_KEY);
+  CHECK_AND_ASSERT_THROW_MES(!result, "curve tree root node is missing");
+  CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(crypto::ec_point), "curve tree root node has unexpected size");
+  crypto::ec_point root;
+  memcpy(&root, v.mv_data, sizeof(root));
+  TXN_POSTFIX_RDONLY();
+  return root;
+}
+
+BlockchainLMDB::LastHashes BlockchainLMDB::get_tree_last_hashes(uint64_t height) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height), "get_tree_last_hashes called pre-fork");
+  LastHashes out;
+  TXN_PREFIX_RDONLY();
+  for (uint64_t layer_idx = 0;; ++layer_idx)
+  {
+    const std::string key = fcmpp_prop_key("layer." + std::to_string(layer_idx) + ".last_hash");
+    MDB_val_str(k, key.c_str());
+    MDB_val v;
+    int result = mdb_get(m_txn, m_properties, &k, &v);
+    if (result == MDB_NOTFOUND)
+      break;
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading layer last_hash: ", result));
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(crypto::hash), "invalid layer hash size");
+    out.emplace_back();
+    memcpy(&out.back(), v.mv_data, sizeof(crypto::hash));
+  }
+  TXN_POSTFIX_RDONLY();
+  return out;
+}
+
+std::vector<std::vector<crypto::ec_point>> BlockchainLMDB::get_last_chunk_children_for_trim(const std::vector<uint64_t> &trim_instructions) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "get_last_chunk_children_for_trim called pre-fork");
+  std::vector<std::vector<crypto::ec_point>> out(trim_instructions.size());
+  TXN_PREFIX_RDONLY();
+  RCURSOR(curve_tree_nodes);
+  for (uint64_t layer_idx = 0; layer_idx < trim_instructions.size(); ++layer_idx)
+  {
+    if (trim_instructions[layer_idx] == 0)
+      continue;
+    uint64_t db_key = fcmpp_node_db_key(layer_idx, trim_instructions[layer_idx] - 1);
+    MDB_val k{sizeof(db_key), &db_key};
+    MDB_val v;
+    int result = mdb_cursor_get(m_cur_curve_tree_nodes, &k, &v, MDB_SET_KEY);
+    if (result == MDB_NOTFOUND)
+      continue;
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading child chunk node: ", result));
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(crypto::ec_point), "invalid curve tree node size");
+    out[layer_idx].emplace_back();
+    memcpy(&out[layer_idx].back(), v.mv_data, sizeof(crypto::ec_point));
+  }
+  TXN_POSTFIX_RDONLY();
+  return out;
+}
+
+BlockchainLMDB::LastHashes BlockchainLMDB::get_last_hashes_for_trim(const std::vector<uint64_t> &trim_instructions) const
+{
+  (void)trim_instructions;
+  return get_tree_last_hashes(height());
+}
+
+template<typename C_CHILD, typename C_PARENT>
+bool BlockchainLMDB::audit_layer(const std::unique_ptr<C_CHILD> &/*c_child*/, const std::unique_ptr<C_PARENT> &/*c_parent*/, const uint64_t child_layer_idx, const uint64_t chunk_width) const
+{
+  CHECK_AND_ASSERT_THROW_MES(use_fcmpp(height()), "audit_layer called pre-fork");
+  CHECK_AND_ASSERT_THROW_MES(chunk_width > 0, "chunk_width must be > 0");
+  TXN_PREFIX_RDONLY();
+  RCURSOR(curve_tree_nodes);
+  uint64_t child_idx = 0;
+  while (true)
+  {
+    uint64_t child_key = fcmpp_node_db_key(child_layer_idx, child_idx);
+    MDB_val ck{sizeof(child_key), &child_key};
+    MDB_val cv;
+    int child_res = mdb_cursor_get(m_cur_curve_tree_nodes, &ck, &cv, MDB_SET_KEY);
+    if (child_res == MDB_NOTFOUND)
+      break;
+    CHECK_AND_ASSERT_THROW_MES(!child_res, lmdb_error("Failed reading child node during audit: ", child_res));
+
+    const uint64_t parent_idx = child_idx / chunk_width;
+    uint64_t parent_key = fcmpp_node_db_key(child_layer_idx + 1, parent_idx);
+    MDB_val pk{sizeof(parent_key), &parent_key};
+    MDB_val pv;
+    int parent_res = mdb_cursor_get(m_cur_curve_tree_nodes, &pk, &pv, MDB_SET_KEY);
+    if (parent_res == MDB_NOTFOUND)
+      return false;
+    CHECK_AND_ASSERT_THROW_MES(!parent_res, lmdb_error("Failed reading parent node during audit: ", parent_res));
+    child_idx += chunk_width;
+  }
+  TXN_POSTFIX_RDONLY();
+  return true;
+}
+
+std::vector<OutputContext> BlockchainLMDB::get_outs_at_last_locked_block_id(uint64_t block_id) const
+{
+  std::vector<OutputContext> out;
+  TXN_PREFIX_RDONLY();
+  RCURSOR(locked_outputs);
+  MDB_val_set(k, block_id);
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_SET);
+  if (result == MDB_NOTFOUND)
+    return out;
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading locked outputs: ", result));
+
+  do
+  {
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(locked_output_data_t), "invalid locked_output record size");
+    const auto *raw = reinterpret_cast<const locked_output_data_t *>(v.mv_data);
+    OutputContext ctx;
+    ctx.out_key = raw->out_key;
+    ctx.amount = raw->amount;
+    ctx.unlock_time = raw->unlock_time;
+    ctx.height = raw->height;
+    ctx.is_coinbase = raw->is_coinbase != 0;
+    out.push_back(ctx);
+    result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_NEXT_DUP);
+  } while (result == MDB_SUCCESS);
+  CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed iterating locked outputs: ", result));
+  TXN_POSTFIX_RDONLY();
+  return out;
+}
+
+void BlockchainLMDB::del_locked_outs_at_block_id(uint64_t block_id)
+{
+  TXN_BLOCK_PREFIX(0);
+  MDB_cursor *cur;
+  int result = mdb_cursor_open(*txn_ptr, m_locked_outputs, &cur);
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed opening locked_outputs cursor: ", result));
+  MDB_val_set(k, block_id);
+  MDB_val v;
+  result = mdb_cursor_get(cur, &k, &v, MDB_SET);
+  if (result == MDB_NOTFOUND)
+    return;
+  CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed reading locked output for delete: ", result));
+  do
+  {
+    result = mdb_cursor_del(cur, 0);
+    CHECK_AND_ASSERT_THROW_MES(!result, lmdb_error("Failed deleting locked output: ", result));
+    result = mdb_cursor_get(cur, &k, &v, MDB_NEXT_DUP);
+  } while (result == MDB_SUCCESS);
+  CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed iterating locked output delete: ", result));
+  TXN_BLOCK_POSTFIX_SUCCESS();
+}
+
+std::map<uint64_t, std::vector<OutputContext>> BlockchainLMDB::get_custom_timelocked_outputs(uint64_t start_block_idx) const
+{
+  std::map<uint64_t, std::vector<OutputContext>> out;
+  TXN_PREFIX_RDONLY();
+  RCURSOR(locked_outputs);
+  MDB_val k;
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_FIRST);
+  while (result == MDB_SUCCESS)
+  {
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(locked_output_data_t), "invalid locked_output record size");
+    const auto *raw = reinterpret_cast<const locked_output_data_t *>(v.mv_data);
+    if (raw->unlock_time > CRYPTONOTE_MAX_BLOCK_NUMBER && raw->last_locked_block_id >= start_block_idx)
+    {
+      OutputContext ctx{raw->out_key, raw->amount, raw->unlock_time, raw->height, raw->is_coinbase != 0};
+      out[raw->last_locked_block_id].push_back(ctx);
+    }
+    result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_NEXT);
+  }
+  CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed scanning locked outputs: ", result));
+  TXN_POSTFIX_RDONLY();
+  return out;
+}
+
+std::map<uint64_t, std::vector<OutputContext>> BlockchainLMDB::get_recent_locked_outputs(uint64_t chain_height) const
+{
+  std::map<uint64_t, std::vector<OutputContext>> out;
+  TXN_PREFIX_RDONLY();
+  RCURSOR(locked_outputs);
+  MDB_val k;
+  MDB_val v;
+  int result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_FIRST);
+  while (result == MDB_SUCCESS)
+  {
+    CHECK_AND_ASSERT_THROW_MES(v.mv_size == sizeof(locked_output_data_t), "invalid locked_output record size");
+    const auto *raw = reinterpret_cast<const locked_output_data_t *>(v.mv_data);
+    const uint64_t spendable_age = raw->is_coinbase ? CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW : CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+    if (chain_height >= raw->last_locked_block_id && chain_height - raw->last_locked_block_id <= spendable_age)
+    {
+      OutputContext ctx{raw->out_key, raw->amount, raw->unlock_time, raw->height, raw->is_coinbase != 0};
+      out[raw->last_locked_block_id].push_back(ctx);
+    }
+    result = mdb_cursor_get(m_cur_locked_outputs, &k, &v, MDB_NEXT);
+  }
+  CHECK_AND_ASSERT_THROW_MES(result == MDB_NOTFOUND, lmdb_error("Failed scanning recent locked outputs: ", result));
+  TXN_POSTFIX_RDONLY();
+  return out;
 }
 
 void BlockchainLMDB::get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
@@ -6018,5 +6493,19 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
   if (oldversion < 5)
     migrate_4_5();
 }
+
+struct SeleneCurve {};
+struct HeliosCurve {};
+
+template void BlockchainLMDB::grow_layer<SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const std::vector<crypto::ec_point> &, const uint64_t);
+template void BlockchainLMDB::grow_layer<HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const std::vector<crypto::ec_point> &, const uint64_t);
+template void BlockchainLMDB::trim_layer<SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const fcmp_pp::curve_trees::LayerReduction<SeleneCurve> &, const uint64_t);
+template void BlockchainLMDB::trim_layer<HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const fcmp_pp::curve_trees::LayerReduction<HeliosCurve> &, const uint64_t);
+template fcmp_pp::curve_trees::TreeReduction<SeleneCurve> BlockchainLMDB::get_tree_reduction<SeleneCurve>(uint64_t) const;
+template fcmp_pp::curve_trees::TreeReduction<HeliosCurve> BlockchainLMDB::get_tree_reduction<HeliosCurve>(uint64_t) const;
+template bool BlockchainLMDB::audit_layer<SeleneCurve, SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const std::unique_ptr<SeleneCurve> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<SeleneCurve, HeliosCurve>(const std::unique_ptr<SeleneCurve> &, const std::unique_ptr<HeliosCurve> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<HeliosCurve, SeleneCurve>(const std::unique_ptr<HeliosCurve> &, const std::unique_ptr<SeleneCurve> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<HeliosCurve, HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const std::unique_ptr<HeliosCurve> &, const uint64_t, const uint64_t) const;
 
 }  // namespace cryptonote

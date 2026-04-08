@@ -565,6 +565,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   {
     // ensure we fixup anything we found and fix in the future
     m_db->fixup();
+    if (m_db->height() > 0 && use_fcmpp(get_current_hard_fork_version()))
+      m_db->rebuild_curve_tree();
   }
 
   db_rtxn_guard rtxn_guard(m_db);

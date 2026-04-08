@@ -127,6 +127,11 @@ namespace cryptonote
 
 namespace cryptonote
 {
+  static inline bool rct_type_supports_pruned_weight(const rct::RCTType type)
+  {
+    return type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG || type == rct::RCTTypeBulletproofPlus || type == rct::RCTTypeFcmpPlusPlus;
+  }
+
   //---------------------------------------------------------------
   void get_transaction_prefix_hash(const transaction_prefix& tx, crypto::hash& h, hw::device &hwdev)
   {
@@ -462,7 +467,7 @@ namespace cryptonote
   {
     CHECK_AND_ASSERT_MES(tx.pruned, std::numeric_limits<uint64_t>::max(), "get_pruned_transaction_weight does not support non pruned txes");
     CHECK_AND_ASSERT_MES(tx.version >= 2, std::numeric_limits<uint64_t>::max(), "get_pruned_transaction_weight does not support v1 txes");
-    CHECK_AND_ASSERT_MES(tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG || tx.rct_signatures.type == rct::RCTTypeBulletproofPlus || tx.rct_signatures.type == rct::RCTTypeFcmpPlusPlus,
+    CHECK_AND_ASSERT_MES(rct_type_supports_pruned_weight(tx.rct_signatures.type),
         std::numeric_limits<uint64_t>::max(), "Unsupported rct_signatures type in get_pruned_transaction_weight");
     CHECK_AND_ASSERT_MES(!tx.vin.empty(), std::numeric_limits<uint64_t>::max(), "empty vin");
     CHECK_AND_ASSERT_MES(tx.vin[0].type() == typeid(cryptonote::txin_to_key), std::numeric_limits<uint64_t>::max(), "empty vin");

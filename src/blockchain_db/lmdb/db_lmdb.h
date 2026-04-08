@@ -27,6 +27,7 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/blobdatatype.h" // for type blobdata
@@ -39,6 +40,32 @@
 
 namespace cryptonote
 {
+
+namespace fcmp_pp
+{
+namespace curve_trees
+{
+  template <typename C> struct LayerReduction
+  {
+    uint64_t new_node_count = 0;
+    std::vector<uint64_t> trim_instructions;
+  };
+
+  template <typename C> struct TreeReduction
+  {
+    std::vector<LayerReduction<C>> layers;
+  };
+}
+}
+
+struct OutputContext
+{
+  crypto::public_key out_key = crypto::null_pkey;
+  uint64_t amount = 0;
+  uint64_t unlock_time = 0;
+  uint64_t height = 0;
+  bool is_coinbase = false;
+};
 
 typedef struct txindex {
     crypto::hash key;
@@ -74,6 +101,7 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_properties;
   MDB_cursor *m_txc_curve_tree_leaves;
   MDB_cursor *m_txc_curve_tree_nodes;
+  MDB_cursor *m_txc_locked_outputs;
 } mdb_txn_cursors;
 
 #define m_cur_blocks	m_cursors->m_txc_blocks
@@ -96,6 +124,7 @@ typedef struct mdb_txn_cursors
 #define m_cur_properties	m_cursors->m_txc_properties
 #define m_cur_curve_tree_leaves	m_cursors->m_txc_curve_tree_leaves
 #define m_cur_curve_tree_nodes	m_cursors->m_txc_curve_tree_nodes
+#define m_cur_locked_outputs	m_cursors->m_txc_locked_outputs
 
 typedef struct mdb_rflags
 {
@@ -120,6 +149,7 @@ typedef struct mdb_rflags
   bool m_rf_properties;
   bool m_rf_curve_tree_leaves;
   bool m_rf_curve_tree_nodes;
+  bool m_rf_locked_outputs;
 } mdb_rflags;
 
 typedef struct mdb_threadinfo
@@ -354,6 +384,36 @@ public:
   virtual rct::key get_curve_tree_root(uint64_t height) const override;
   virtual void rebuild_curve_tree() override;
 
+  template<typename C>
+  void grow_layer(const std::unique_ptr<C> &curve, const std::vector<crypto::ec_point> &nodes, const uint64_t layer_idx);
+
+  template<typename C>
+  void trim_layer(const std::unique_ptr<C> &curve, const fcmp_pp::curve_trees::LayerReduction<C> &layer_reduction, const uint64_t layer_idx);
+
+  void trim_block(uint64_t height);
+
+  template<typename C>
+  fcmp_pp::curve_trees::TreeReduction<C> get_tree_reduction(uint64_t new_n_leaf_tuples) const;
+
+  uint64_t get_n_leaf_tuples() const;
+  uint64_t get_block_n_leaf_tuples(uint64_t block_height) const;
+  crypto::ec_point get_tree_root(uint64_t height) const;
+  using LastHashes = std::vector<crypto::hash>;
+  LastHashes get_tree_last_hashes(uint64_t height) const;
+  std::vector<std::vector<crypto::ec_point>> get_last_chunk_children_for_trim(const std::vector<uint64_t> &trim_instructions) const;
+  LastHashes get_last_hashes_for_trim(const std::vector<uint64_t> &trim_instructions) const;
+
+  template<typename C_CHILD, typename C_PARENT>
+  bool audit_layer(const std::unique_ptr<C_CHILD> &c_child, const std::unique_ptr<C_PARENT> &c_parent, const uint64_t child_layer_idx, const uint64_t chunk_width) const;
+
+  std::vector<OutputContext> get_outs_at_last_locked_block_id(uint64_t block_id) const;
+  void del_locked_outs_at_block_id(uint64_t block_id);
+  std::map<uint64_t, std::vector<OutputContext>> get_custom_timelocked_outputs(uint64_t start_block_idx) const;
+  std::map<uint64_t, std::vector<OutputContext>> get_recent_locked_outputs(uint64_t chain_height) const;
+  virtual void add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple) override;
+  virtual rct::key get_curve_tree_root(uint64_t height) const override;
+  virtual void rebuild_curve_tree() override;
+
   virtual bool can_thread_bulk_indices() const { return true; }
 
   /**
@@ -495,6 +555,7 @@ private:
   MDB_dbi m_properties;
   MDB_dbi m_curve_tree_leaves;
   MDB_dbi m_curve_tree_nodes;
+  MDB_dbi m_locked_outputs;
 
   mutable uint64_t m_cum_size;	// used in batch size estimation
   mutable unsigned int m_cum_count;

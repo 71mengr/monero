@@ -392,6 +392,18 @@ namespace cryptonote
       tvc.m_no_drop_offense = true;
       return false;
     }
+    if (tx.version >= 2 && tx.rct_signatures.type == rct::RCTTypeFcmpPlusPlus && use_fcmpp(version))
+    {
+      const rct::key curve_root = m_blockchain.get_db().get_curve_tree_root(m_blockchain.get_current_blockchain_height());
+      if (curve_root == rct::zero())
+      {
+        LOG_PRINT_L1("Rejecting FCMP++ tx " << id << ": missing curve-tree root");
+        tvc.m_verifivation_failed = true;
+        tvc.m_invalid_input = true;
+        tvc.m_no_drop_offense = true;
+        return false;
+      }
+    }
 
     if (version >= HF_MN_REG && !check_masternode_registration_policy(m_blockchain, tx, id, version))
     {

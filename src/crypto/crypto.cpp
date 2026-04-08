@@ -638,6 +638,7 @@ namespace crypto {
   {
     ge_p3 hp_point;
     ge_p2 r_hp;
+    ge_p3 r_g_p3;
     public_key r_g;
     key_image r_hp_bytes;
     hash nonce_hash;
@@ -655,7 +656,8 @@ namespace crypto {
     crypto_core_ed25519_scalar_reduce(reinterpret_cast<unsigned char *>(&r), wide_nonce);
     memwipe(wide_nonce, sizeof(wide_nonce));
 
-    ge_scalarmult_base(&r_g, &r);
+    ge_scalarmult_base(&r_g_p3, &r);
+    ge_p3_tobytes(&r_g, &r_g_p3);
     hash_to_ec(pub, hp_point);
     ge_scalarmult(&r_hp, &r, &hp_point);
     ge_tobytes(&r_hp_bytes, &r_hp);

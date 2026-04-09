@@ -182,8 +182,13 @@ namespace crypto {
    */
   template<typename T>
   T rand() {
+#if __cplusplus >= 201703L
     static_assert(std::is_standard_layout_v<T>, "cannot write random bytes into non-standard layout type");
     static_assert(std::is_trivially_copyable_v<T>, "cannot write random bytes into non-trivially copyable type");
+#else
+    static_assert(std::is_standard_layout<T>::value, "cannot write random bytes into non-standard layout type");
+    static_assert(std::is_trivially_copyable<T>::value, "cannot write random bytes into non-trivially copyable type");
+#endif
     typename std::remove_cv<T>::type res;
     generate_random_bytes_thread_safe(sizeof(T), (uint8_t*)&res);
     return res;

@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Monero Research Labs
+// Copyright (c) 2016-2024, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 // 
@@ -34,16 +34,10 @@
 #include "common/threadpool.h"
 #include "common/util.h"
 #include "rctSigs.h"
-#include "fcmp_pp/curve_trees.h"
-#include "fcmp_pp/proof.h"
 #include "bulletproofs.h"
 #include "bulletproofs_plus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
-#include <algorithm>
-#include <cmath>
-#include <mutex>
-#include <unordered_set>
 
 using namespace crypto;
 using namespace std;
@@ -53,8 +47,7 @@ using namespace std;
 
 #define CHECK_AND_ASSERT_MES_L1(expr, ret, message) {if(!(expr)) {MCERROR("verify", message); return ret;}}
 
-namespace
-{
+namespace rct {
     rct::Bulletproof make_dummy_bulletproof(const std::vector<uint64_t> &outamounts, rct::keyV &C, rct::keyV &masks)
     {
         const size_t n_outs = outamounts.size();
@@ -123,19 +116,7 @@ namespace
         const size_t n_scalars = ring_size;
         return rct::clsag{rct::keyV(n_scalars, I), I, I, I};
     }
-}
 
-namespace rct {
-    namespace
-    {
-      std::unordered_set<key> g_used_fcmpp_linking_tags;
-      std::mutex g_used_fcmpp_linking_tags_mutex;
-
-      key fcmpplus_pedersen_from_output(const key &output)
-      {
-        return hash_to_scalar(keysV{output, H});
-      }
-    }
     Bulletproof proveRangeBulletproof(keyV &C, keyV &masks, const std::vector<uint64_t> &amounts, epee::span<const key> sk, hw::device &hwdev)
     {
         CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
@@ -381,100 +362,6 @@ namespace rct {
 
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l) {
         return CLSAG_Gen(message, P, p, C, z, C_nonzero, C_offset, l, hw::get_device("default"));
-    }
-
-    fcmpplus_proof FCMPPlus_Gen(const key &message, const keyV &P, const key &secret, unsigned int secret_index)
-    {
-        CHECK_AND_ASSERT_THROW_MES(!P.empty(), "FCMP++ ring is empty");
-        CHECK_AND_ASSERT_THROW_MES(secret_index < P.size(), "FCMP++ secret index out of range");
-
-        fcmp_pp::curve_tree tree;
-        tree.reserve(P.size());
-        for (const key &out: P)
-            tree.push_back({out, identity(), identity()});
-
-        fcmpplus_proof proof{};
-        proof.B = P[secret_index];
-
-        const key alpha = skGen();
-        scalarmultBase(proof.A, alpha);
-
-        proof.L = fcmp_pp::merkle_path(tree, secret_index);
-        proof.R.reserve(proof.L.size());
-
-        std::size_t idx = secret_index;
-        for (size_t i = 0; i < proof.L.size(); ++i)
-        {
-            proof.R.push_back((idx & 1) ? G : identity());
-            idx >>= 1;
-        }
-
-        proof.c0 = fcmp_pp::compute_root(tree);
-
-        const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
-        sc_mulsub(proof.z.bytes, challenge.bytes, secret.bytes, alpha.bytes);
-
-        proof.key_image_commitment = fcmpplus_pedersen_from_output(P[secret_index]);
-        proof.linking_tag = hash_to_scalar(proof.key_image_commitment);
-
-        return proof;
-    }
-
-    bool FCMPPlus_Ver(const key &message, const keyV &P, const fcmpplus_proof &proof)
-    {
-        CHECK_AND_ASSERT_MES(!P.empty(), false, "FCMP++ ring is empty");
-        CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), false, "FCMP++ proof dimensions mismatch");
-
-        CHECK_AND_ASSERT_MES((proof.key_image_commitment.bytes[31] & 0x80) == 0, false, "FCMP++ key commitment has sign bit set");
-
-        key node;
-        const key leaf_scalar = hash_to_scalar(keysV{proof.B, identity(), identity()});
-        scalarmultBase(node, leaf_scalar);
-
-        for (size_t i = 0; i < proof.L.size(); ++i)
-        {
-            key left, right;
-            if (equalKeys(proof.R[i], G))
-            {
-                left = proof.L[i];
-                right = node;
-            }
-            else
-            {
-                left = node;
-                right = proof.L[i];
-            }
-
-            const key parent_scalar = hash_to_scalar(keysV{left, right});
-            scalarmultBase(node, parent_scalar);
-        }
-
-        CHECK_AND_ASSERT_MES(equalKeys(node, proof.c0), false, "FCMP++ Merkle root mismatch");
-
-        const key challenge = hash_to_scalar(keysV{message, proof.A, proof.B, proof.c0});
-        key lhs;
-        addKeys2(lhs, proof.z, challenge, proof.B);
-        CHECK_AND_ASSERT_MES(equalKeys(lhs, proof.A), false, "FCMP++ linear relation mismatch");
-
-        const fcmp_pp::output_tuple leaf_from_proof{proof.B, proof.key_image_commitment, proof.c0};
-        const key expected_key_image_commitment = fcmpplus_pedersen_from_output(leaf_from_proof.O);
-        CHECK_AND_ASSERT_MES(equalKeys(expected_key_image_commitment, leaf_from_proof.I), false, "FCMP++ key image commitment mismatch");
-
-        const key expected_linking_tag = hash_to_scalar(leaf_from_proof.I);
-        CHECK_AND_ASSERT_MES(equalKeys(expected_linking_tag, proof.linking_tag), false, "FCMP++ linking tag mismatch");
-
-        {
-            std::lock_guard<std::mutex> lock(g_used_fcmpp_linking_tags_mutex);
-            const auto inserted = g_used_fcmpp_linking_tags.insert(proof.linking_tag);
-            CHECK_AND_ASSERT_MES(inserted.second, false, "FCMP++ linking tag already used");
-        }
-        return true;
-    }
-
-    void FCMPPlus_ResetUsedLinkingTags()
-    {
-        std::lock_guard<std::mutex> lock(g_used_fcmpp_linking_tags_mutex);
-        g_used_fcmpp_linking_tags.clear();
     }
 
     // MLSAG signatures
@@ -726,7 +613,7 @@ namespace rct {
       hashes.push_back(hash2rct(h));
 
       keyV kv;
-      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeFcmpPlusPlus)
+      if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG)
       {
         kv.reserve((6*2+9) * rv.p.bulletproofs.size());
         for (const auto &p: rv.p.bulletproofs)
@@ -1183,7 +1070,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(amounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
         }
 
         //set txn fee
@@ -1232,9 +1119,6 @@ namespace rct {
             case 0:
             case 4:
               rv.type = RCTTypeBulletproofPlus;
-              break;
-            case 5:
-              rv.type = RCTTypeFcmpPlusPlus;
               break;
             case 3:
               rv.type = RCTTypeCLSAG;
@@ -1361,7 +1245,7 @@ namespace rct {
             //mask amount and mask
             rv.ecdhInfo[i].mask = copy(outSk[i].mask);
             rv.ecdhInfo[i].amount = d2h(outamounts[i]);
-            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus);
+            hwdev.ecdhEncode(rv.ecdhInfo[i], amount_keys[i], rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
         }
             
         //set txn fee
@@ -1371,9 +1255,7 @@ namespace rct {
         rv.mixRing = mixRing;
         keyV &pseudoOuts = bulletproof_or_plus ? rv.p.pseudoOuts : rv.pseudoOuts;
         pseudoOuts.resize(inamounts.size());
-        if (rv.type == RCTTypeFcmpPlusPlus)
-            rv.p.FCMPPlusProofs.resize(inamounts.size());
-        else if (is_rct_clsag(rv.type))
+        if (is_rct_clsag(rv.type))
             rv.p.CLSAGs.resize(inamounts.size());
         else
             rv.p.MGs.resize(inamounts.size());
@@ -1392,19 +1274,7 @@ namespace rct {
 
         for (i = 0 ; i < inamounts.size(); i++)
         {
-            if (rv.type == RCTTypeFcmpPlusPlus)
-            {
-                if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
-                    rv.p.FCMPPlusProofs[i] = fcmpplus_proof{};
-                else
-                {
-                    keyV ring_pubkeys(rv.mixRing[i].size());
-                    for (size_t j = 0; j < rv.mixRing[i].size(); ++j)
-                      ring_pubkeys[j] = rv.mixRing[i][j].dest;
-                    rv.p.FCMPPlusProofs[i] = FCMPPlus_Gen(full_message, ring_pubkeys, inSk[i].dest, index[i]);
-                }
-            }
-            else if (is_rct_clsag(rv.type))
+            if (is_rct_clsag(rv.type))
             {
                 if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
                     rv.p.CLSAGs[i] = make_dummy_clsag(rv.mixRing[i].size());
@@ -1432,26 +1302,6 @@ namespace rct {
         return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys, index, outSk, rct_config, hwdev);
     }
 
-    rctSig genRctFcmpPlusPlus(const key &message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV & amount_keys, const std::vector<unsigned int> & index, ctkeyV & outSk, const RCTConfig &rct_config, hw::device &hwdev)
-    {
-        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys, index, outSk, rct_config, hwdev);
-    }
-
-    bool verRctFcmpPlusPlus(const rctSig &rv)
-    {
-      CHECK_AND_ASSERT_MES(rv.type == RCTTypeFcmpPlusPlus, false, "verRctFcmpPlusPlus called on non FCMP++ rctSig");
-      return verRctNonSemanticsSimple(rv);
-    }
-
-    bool verRctFcmpPlusPlus(const rctSig &sig, const key &/*message*/, uint64_t /*height*/, const crypto::ec_point &tree_root)
-    {
-      CHECK_AND_ASSERT_MES(sig.type == RCTTypeFcmpPlusPlus, false, "verRctFcmpPlusPlus called on non FCMP++ rctSig");
-      const rct::key expected_root = rct::pt2rct(tree_root);
-      if (!sig.p.FCMPPlusProofs.empty())
-        CHECK_AND_ASSERT_MES(equalKeys(sig.p.FCMPPlusProofs.front().c0, expected_root), false, "FCMP++ tree root mismatch");
-      return verRctFcmpPlusPlus(sig);
-    }
-
     //RingCT protocol
     //genRct: 
     //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
@@ -1464,8 +1314,6 @@ namespace rct {
     //   must know the destination private key to find the correct amount, else will return a random number    
     bool verRct(const rctSig & rv, bool semantics) {
         PERF_TIMER(verRct);
-        if (rv.type == RCTTypeFcmpPlusPlus)
-          return semantics ? verRctSemanticsSimple(rv) : verRctFcmpPlusPlus(rv);
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeFull, false, "verRct called on non-full rctSig");
         if (semantics)
         {
@@ -1543,7 +1391,7 @@ namespace rct {
         {
           CHECK_AND_ASSERT_MES(rvp, false, "rctSig pointer is NULL");
           const rctSig &rv = *rvp;
-          CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus,
+          CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
               false, "verRctSemanticsSimple called on non simple rctSig");
           const bool bulletproof = is_rct_bulletproof(rv.type);
           const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -1558,16 +1406,9 @@ namespace rct {
               CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
               CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
             }
-            else if (rv.type == RCTTypeFcmpPlusPlus)
-            {
-              CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for FCMP++");
-              CHECK_AND_ASSERT_MES(rv.p.CLSAGs.empty(), false, "CLSAGs are not empty for FCMP++");
-              CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.FCMPPlusProofs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.FCMPPlusProofs");
-            }
             else
             {
               CHECK_AND_ASSERT_MES(rv.p.CLSAGs.empty(), false, "CLSAGs are not empty for MLSAG");
-              CHECK_AND_ASSERT_MES(rv.p.FCMPPlusProofs.empty(), false, "FCMPPlusProofs are not empty for MLSAG");
               CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.MGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.MGs");
             }
             CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
@@ -1679,7 +1520,7 @@ namespace rct {
       {
         PERF_TIMER(verRctNonSemanticsSimple);
 
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
         const bool bulletproof = is_rct_bulletproof(rv.type);
         const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
@@ -1703,14 +1544,7 @@ namespace rct {
         results.resize(rv.mixRing.size());
         for (size_t i = 0 ; i < rv.mixRing.size() ; i++) {
           tpool.submit(&waiter, [&, i] {
-              if (rv.type == RCTTypeFcmpPlusPlus)
-              {
-                  keyV ring_pubkeys(rv.mixRing[i].size());
-                  for (size_t j = 0; j < rv.mixRing[i].size(); ++j)
-                    ring_pubkeys[j] = rv.mixRing[i][j].dest;
-                  results[i] = FCMPPlus_Ver(message, ring_pubkeys, rv.p.FCMPPlusProofs[i]);
-              }
-              else if (is_rct_clsag(rv.type))
+              if (is_rct_clsag(rv.type))
                   results[i] = verRctCLSAGSimple(message, rv.p.CLSAGs[i], rv.mixRing[i], pseudoOuts[i]);
               else
                   results[i] = verRctMGSimple(message, rv.p.MGs[i], rv.mixRing[i], pseudoOuts[i]);
@@ -1758,7 +1592,7 @@ namespace rct {
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;
@@ -1782,14 +1616,14 @@ namespace rct {
     }
 
     xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key &mask, hw::device &hwdev) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus,
+        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
             false, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus || rv.type == RCTTypeFcmpPlusPlus);
+        hwdev.ecdhDecode(ecdh_info, sk, rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus);
         mask = ecdh_info.mask;
         key amount = ecdh_info.amount;
         key C = rv.outPk[i].mask;

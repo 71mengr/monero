@@ -1,5 +1,5 @@
 //#define DBG
-// Copyright (c) 2016, Monero Research Labs
+// Copyright (c) 2016-2024, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 //
@@ -35,7 +35,6 @@
 #define RCTOPS_H
 
 #include <cstddef>
-#include <cstdint>
 #include <tuple>
 
 #include "crypto/generic-ops.h"
@@ -55,15 +54,6 @@ extern "C" {
 #else
 #define DP(x)
 #endif
-
-
-namespace rct::fcmp_pp {
-    enum class curve_id : uint8_t
-    {
-        SELENE = 0,
-        HELIOS = 1,
-    };
-}
 
 namespace rct {
 
@@ -118,7 +108,7 @@ namespace rct {
     // make a pedersen commitment with given key
     key commit(xmr_amount amount, const key &mask);
     // make a pedersen commitment with zero key
-    key zeroCommit(xmr_amount amount);
+    key zeroCommitVartime(xmr_amount amount);
     //generates a random uint long long
     xmr_amount randXmrAmount(xmr_amount upperlimit);
 
@@ -194,13 +184,9 @@ namespace rct {
 
     //Elliptic Curve Diffie Helman: encodes and decodes the amount b and mask a
     // where C= aG + bH
+    key genAmountEncodingFactor(const key &k);
     key genCommitmentMask(const key &sk);
     void ecdhEncode(ecdhTuple & unmasked, const key & sharedSec, bool v2);
     void ecdhDecode(ecdhTuple & masked, const key & sharedSec, bool v2);
-}
-
-namespace rct::fcmp_pp {
-    void scalarmultBase_curve(key &point, const key &scalar, curve_id curve);
-    key hash_to_ec_curve(const keyV &inputs, curve_id curve);
 }
 #endif  /* RCTOPS_H */

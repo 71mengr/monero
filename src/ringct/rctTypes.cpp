@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Monero Research Labs
+// Copyright (c) 2016-2024, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 // 
@@ -197,7 +197,6 @@ namespace rct {
             case RCTTypeBulletproof2:
             case RCTTypeCLSAG:
             case RCTTypeBulletproofPlus:
-            case RCTTypeFcmpPlusPlus:
                 return true;
             default:
                 return false;
@@ -211,7 +210,6 @@ namespace rct {
             case RCTTypeBulletproof:
             case RCTTypeBulletproof2:
             case RCTTypeCLSAG:
-            case RCTTypeFcmpPlusPlus:
                 return true;
             default:
                 return false;

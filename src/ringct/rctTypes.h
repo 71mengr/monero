@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Monero Research Labs
+// Copyright (c) 2016-2024, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 //
@@ -45,7 +45,7 @@ extern "C" {
 }
 #include "crypto/generic-ops.h"
 #include "crypto/crypto.h"
-
+#include "fcmp_pp/proof.h"
 #include "hex.h"
 #include "span.h"
 #include "memwipe.h"
@@ -84,6 +84,7 @@ namespace rct {
             return bytes[i];
         }
         bool operator==(const key &k) const { return !crypto_verify_32(bytes, k.bytes); }
+        bool operator!=(const key &k) const { return crypto_verify_32(bytes, k.bytes); }
         unsigned char bytes[32];
     };
     typedef std::vector<key> keyV; //vector of keys
@@ -193,31 +194,6 @@ namespace rct {
         END_SERIALIZE()
     };
 
-    struct fcmpplus_proof
-    {
-      key A;
-      key B;
-      key key_image_commitment;
-      key linking_tag;
-      keyV L;
-      keyV R;
-      key z;
-      key c0;
-
-      BEGIN_SERIALIZE_OBJECT()
-        FIELD(A)
-        FIELD(B)
-        FIELD(key_image_commitment)
-        FIELD(linking_tag)
-        FIELD(L)
-        FIELD(R)
-        FIELD(z)
-        FIELD(c0)
-        if (L.size() != R.size())
-          return false;
-      END_SERIALIZE()
-    };
-
     //contains the data for an Borromean sig
     // also contains the "Ci" values such that
     // \sum Ci = C
@@ -243,7 +219,7 @@ namespace rct {
       rct::key a, b, t;
 
       Bulletproof():
-        A({}), S({}), T1({}), T2({}), taux({}), mu({}), a({}), b({}), t({}) {}
+        A({}), S({}), T1({}), T2({}), taux({}), mu({}), a({}), b({}), t({}), V({}), L({}), R({}) {}
       Bulletproof(const rct::key &V, const rct::key &A, const rct::key &S, const rct::key &T1, const rct::key &T2, const rct::key &taux, const rct::key &mu, const rct::keyV &L, const rct::keyV &R, const rct::key &a, const rct::key &b, const rct::key &t):
         V({V}), A(A), S(S), T1(T1), T2(T2), taux(taux), mu(mu), L(L), R(R), a(a), b(b), t(t) {}
       Bulletproof(const rct::keyV &V, const rct::key &A, const rct::key &S, const rct::key &T1, const rct::key &T2, const rct::key &taux, const rct::key &mu, const rct::keyV &L, const rct::keyV &R, const rct::key &a, const rct::key &b, const rct::key &t):
@@ -278,7 +254,7 @@ namespace rct {
       rct::key r1, s1, d1;
       rct::keyV L, R;
 
-      BulletproofPlus() {}
+      BulletproofPlus(): V(), A(), A1(), B(), r1(), s1(), d1(), L(), R() {}
       BulletproofPlus(const rct::key &V, const rct::key &A, const rct::key &A1, const rct::key &B, const rct::key &r1, const rct::key &s1, const rct::key &d1, const rct::keyV &L, const rct::keyV &R):
         V({V}), A(A), A1(A1), B(B), r1(r1), s1(s1), d1(d1), L(L), R(R) {}
       BulletproofPlus(const rct::keyV &V, const rct::key &A, const rct::key &A1, const rct::key &B, const rct::key &r1, const rct::key &s1, const rct::key &d1, const rct::keyV &L, const rct::keyV &R):
@@ -350,9 +326,10 @@ namespace rct {
         std::vector<ecdhTuple> ecdhInfo;
         ctkeyV outPk;
         xmr_amount txnFee; // contains b
+        crypto::hash referenceBlock; // block containing the merkle tree root used for fcmp++
 
         rctSigBase() :
-          type(RCTTypeNull), message{}, mixRing{}, pseudoOuts{}, ecdhInfo{}, outPk{}, txnFee(0)
+          type(RCTTypeNull), message{}, mixRing{}, pseudoOuts{}, ecdhInfo{}, outPk{}, txnFee(0), referenceBlock{}
         {}
 
         template<bool W, template <bool> class Archive>
@@ -426,6 +403,8 @@ namespace rct {
               ar.delimit_array();
           }
           ar.end_array();
+          if (type == RCTTypeFcmpPlusPlus)
+            FIELD(referenceBlock)
           return ar.good();
         }
 
@@ -437,6 +416,7 @@ namespace rct {
           FIELD(ecdhInfo)
           FIELD(outPk)
           VARINT_FIELD(txnFee)
+          FIELD(referenceBlock)
         END_SERIALIZE()
     };
     struct rctSigPrunable {
@@ -445,8 +425,9 @@ namespace rct {
         std::vector<BulletproofPlus> bulletproofs_plus;
         std::vector<mgSig> MGs; // simple rct has N, full has 1
         std::vector<clsag> CLSAGs;
-        std::vector<fcmpplus_proof> FCMPPlusProofs;
         keyV pseudoOuts; //C - for simple rct
+        uint8_t curve_trees_tree_depth; // for fcmp++
+        fcmp_pp::FcmpPpProof fcmp_pp;
 
         // when changing this function, update cryptonote::get_pruned_transaction_weight
         template<bool W, template <bool> class Archive>
@@ -462,7 +443,7 @@ namespace rct {
             return ar.good();
           if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG && type != RCTTypeBulletproofPlus && type != RCTTypeFcmpPlusPlus)
             return false;
-          if (type == RCTTypeBulletproofPlus)
+          if (type == RCTTypeBulletproofPlus || type == RCTTypeFcmpPlusPlus)
           {
             uint32_t nbp = bulletproofs_plus.size();
             VARINT_FIELD(nbp)
@@ -481,10 +462,10 @@ namespace rct {
               return false;
             ar.end_array();
           }
-          else if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeFcmpPlusPlus)
+          else if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
           {
             uint32_t nbp = bulletproofs.size();
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG || type == RCTTypeFcmpPlusPlus)
+            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
               VARINT_FIELD(nbp)
             else
               FIELD(nbp)
@@ -521,18 +502,18 @@ namespace rct {
 
           if (type == RCTTypeFcmpPlusPlus)
           {
-            ar.tag("FCMPPlusProofs");
-            ar.begin_array();
-            PREPARE_CUSTOM_VECTOR_SERIALIZATION(inputs, FCMPPlusProofs);
-            if (FCMPPlusProofs.size() != inputs)
+            FIELD(curve_trees_tree_depth)
+            ar.tag("fcmp_pp");
+            ar.begin_object();
+            const std::size_t proof_len = fcmp_pp::proof_len(inputs, curve_trees_tree_depth);
+            if (!typename Archive<W>::is_saving())
+              fcmp_pp.resize(proof_len);
+            if (fcmp_pp.size() != proof_len)
               return false;
-            for (size_t i = 0; i < inputs; ++i)
-            {
-              FIELDS(FCMPPlusProofs[i])
-              if (inputs - i > 1)
-                 ar.delimit_array();
-            }
-            ar.end_array();
+            ar.serialize_blob(fcmp_pp.data(), proof_len);
+            if (!ar.good())
+              return false;
+            ar.end_object();
           }
           else if (type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
           {
@@ -649,7 +630,8 @@ namespace rct {
           FIELD(bulletproofs_plus)
           FIELD(MGs)
           FIELD(CLSAGs)
-          FIELD(FCMPPlusProofs)
+          FIELD(curve_trees_tree_depth)
+          FIELD(fcmp_pp)
           FIELD(pseudoOuts)
         END_SERIALIZE()
     };
@@ -783,6 +765,7 @@ namespace rct {
     static inline const rct::key &sk2rct(const crypto::secret_key &sk) { return (const rct::key&)sk; }
     static inline const rct::key &ki2rct(const crypto::key_image &ki) { return (const rct::key&)ki; }
     static inline const rct::key &hash2rct(const crypto::hash &h) { return (const rct::key&)h; }
+    static inline const rct::key &pt2rct(const crypto::ec_point &pt) { return (const rct::key&)pt; }
     static inline const crypto::public_key &rct2pk(const rct::key &k) { return (const crypto::public_key&)k; }
     static inline const crypto::secret_key &rct2sk(const rct::key &k) { return (const crypto::secret_key&)k; }
     static inline const crypto::key_image &rct2ki(const rct::key &k) { return (const crypto::key_image&)k; }
@@ -814,7 +797,7 @@ namespace std
 BLOB_SERIALIZER(rct::key);
 BLOB_SERIALIZER(rct::key64);
 BLOB_SERIALIZER(rct::ctkey);
-BLOB_SERIALIZER(rct::multisig_kLRki);
+BLOB_SERIALIZER_FORCED(rct::multisig_kLRki);
 BLOB_SERIALIZER(rct::boroSig);
 
 VARIANT_TAG(debug_archive, rct::key, "rct::key");

@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2022, The Monero Project
+# Copyright (c) 2016-2024, The Monero Project
 #
 # All rights reserved.
 #
@@ -71,7 +71,6 @@ target_link_libraries(ringct
     cncrypto
     cryptonote_basic
     device
-    fcmp_pp
   PRIVATE
     ${OPENSSL_LIBRARIES}
     ${EXTRA_LIBRARIES})

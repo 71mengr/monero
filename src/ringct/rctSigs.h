@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Monero Research Labs
+// Copyright (c) 2016-2024, Monero Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 //
@@ -36,7 +36,6 @@
 #define RCTSIGS_H
 
 #include <cstddef>
-#include <unordered_set>
 #include <vector>
 #include <tuple>
 
@@ -65,11 +64,10 @@ namespace hw {
 
 
 namespace rct {
-    enum class fcmpplus_mode : uint8_t
-    {
-      legacy_clsag = 0,
-      fcmpplus = 1
-    };
+    // helpers for mock txs
+    Bulletproof make_dummy_bulletproof(const std::vector<uint64_t> &outamounts, keyV &C, keyV &masks);
+    BulletproofPlus make_dummy_bulletproof_plus(const std::vector<uint64_t> &outamounts, keyV &C, keyV &masks);
+    clsag make_dummy_clsag(size_t ring_size);
 
     boroSig genBorromean(const key64 x, const key64 P1, const key64 P2, const bits indices);
     bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
@@ -87,9 +85,6 @@ namespace rct {
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l);
     clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, unsigned int, hw::device &);
     bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
-    fcmpplus_proof FCMPPlus_Gen(const key &message, const keyV &P, const key &secret, unsigned int secret_index);
-    bool FCMPPlus_Ver(const key &message, const keyV &P, const fcmpplus_proof &proof);
-    void FCMPPlus_ResetUsedLinkingTags();
 
     //proveRange and verRange
     //proveRange gives C, and mask such that \sumCi = C
@@ -136,9 +131,6 @@ namespace rct {
     rctSig genRct(const key &message, const ctkeyV & inSk, const ctkeyV  & inPk, const keyV & destinations, const std::vector<xmr_amount> & amounts, const keyV &amount_keys, const int mixin, const RCTConfig &rct_config, hw::device &hwdev);
     rctSig genRctSimple(const key & message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config, hw::device &hwdev);
     rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
-    rctSig genRctFcmpPlusPlus(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
-    bool verRctFcmpPlusPlus(const rctSig & rv);
-    bool verRctFcmpPlusPlus(const rctSig &sig, const key &message, uint64_t height, const crypto::ec_point &tree_root);
     bool verRct(const rctSig & rv, bool semantics);
     static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
     bool verRctSemanticsSimple(const rctSig & rv);
@@ -152,3 +144,4 @@ namespace rct {
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 }
 #endif  /* RCTSIGS_H */
+

@@ -35,6 +35,7 @@
 #define RCTOPS_H
 
 #include <cstddef>
+#include <cstdint>
 #include <tuple>
 
 #include "crypto/generic-ops.h"
@@ -47,7 +48,6 @@ extern "C" {
 #include "crypto/crypto.h"
 
 #include "rctTypes.h"
-#include "crypto/curve_switch.h"
 
 //Define this flag when debugging to get additional info on the console
 #ifdef DBG
@@ -55,6 +55,15 @@ extern "C" {
 #else
 #define DP(x)
 #endif
+
+
+namespace rct::fcmp_pp {
+    enum class curve_id : uint8_t
+    {
+        SELENE = 0,
+        HELIOS = 1,
+    };
+}
 
 namespace rct {
 

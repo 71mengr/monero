@@ -1001,7 +1001,7 @@ namespace cryptonote
      *
      * @return false if any key image fails the check, otherwise true
      */
-    bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
+    bool for_all_key_images(std::function<bool(const crypto::key_image_y&)>) const;
 
     /**
      * @brief perform a check on all blocks in the blockchain in the given range
@@ -1181,7 +1181,7 @@ namespace cryptonote
     void revert_masternode_transitions_for_block(uint64_t height);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
-    typedef std::unordered_set<crypto::key_image> key_images_container;
+    typedef std::unordered_set<crypto::key_image_y> key_images_container;
 
     typedef std::vector<block_extended_info> blocks_container;
 
@@ -1199,7 +1199,7 @@ namespace cryptonote
     size_t m_current_block_cumul_weight_median;
 
     // metadata containers
-    std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image, std::vector<output_data_t>>> m_scan_table;
+    std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image_y, std::vector<output_data_t>>> m_scan_table;
     std::unordered_map<crypto::hash, crypto::hash> m_blocks_longhash_table;
     std::unordered_map<std::string, bonded_validator_info> m_masternode_db;
     std::unordered_map<std::string, std::string> m_masternode_by_operator_key;

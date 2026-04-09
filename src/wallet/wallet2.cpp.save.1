@@ -3533,7 +3533,8 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
     num_txes += 1 + parsed_blocks[i].txes.size();
   tx_cache_data.resize(num_txes);
   size_t txidx = 0;
-  // Use outputs to build the curve tree in a separate thread
+
+ // Use outputs to build the curve tree in a separate thread
   tools::threadpool::waiter tree_sync_blocks_waiter(tpool);
   const uint64_t n_blocks_already_synced = (uint64_t) m_blockchain.size();
   THROW_WALLET_EXCEPTION_IF(n_blocks_already_synced == 0, error::wallet_internal_error, "n_blocks_already_synced == 0");
@@ -3858,7 +3859,6 @@ void wallet2::pull_and_parse_next_blocks(bool first, bool try_incremental, uint6
     }
     THROW_WALLET_EXCEPTION_IF(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
     last = !blocks.empty() && cryptonote::get_block_height(parsed_blocks.back().block) + 1 == current_height;
-
     if (init_tree_sync_data)
     {
       // Initialize the tree
@@ -4865,7 +4865,6 @@ bool wallet2::clear()
   m_pool_info_query_time = 0;
   m_skip_to_height = 0;
   m_background_sync_data = background_sync_data_t{};
-  m_tree_cache.clear();
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -4888,10 +4887,8 @@ void wallet2::clear_soft(bool keep_key_images)
 
   cryptonote::block b;
   generate_genesis(b);
-  const crypto::hash genesis_hash = get_block_hash(b);
-  m_blockchain.push_back(genesis_hash);
+  m_blockchain.push_back(get_block_hash(b));
   m_last_block_reward = cryptonote::get_outs_money_amount(b.miner_tx);
-  m_tree_cache.clear();
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::clear_user_data()
@@ -5888,10 +5885,8 @@ void wallet2::setup_new_blockchain()
 {
   cryptonote::block b;
   generate_genesis(b);
-  const crypto::hash genesis_hash = get_block_hash(b);
-  m_blockchain.push_back(genesis_hash);
+  m_blockchain.push_back(get_block_hash(b));
   m_last_block_reward = cryptonote::get_outs_money_amount(b.miner_tx);
-  m_tree_cache.clear();
   add_subaddress_account(tr("Primary account"));
 }
 
@@ -6855,9 +6850,6 @@ void wallet2::load(const std::string& wallet_, const epee::wipeable_string& pass
     THROW_WALLET_EXCEPTION_IF(true, error::file_read_error, "failed to load keys from buffer");
   }
 
-  // We may have loaded a max reorg depth different than the default
-  m_tree_cache.set_max_reorg_depth(m_max_reorg_depth);
-
   wallet_keys_unlocker unlocker(*this, m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only && !m_is_background_wallet, password);
 
   //keys loaded ok!
@@ -6884,13 +6876,6 @@ void wallet2::load(const std::string& wallet_, const epee::wipeable_string& pass
   cryptonote::block genesis;
   generate_genesis(genesis);
   crypto::hash genesis_hash = get_block_hash(genesis);
-
-  if (m_tree_cache.n_synced_blocks() == 0 && !m_transfers.empty() && m_has_ever_refreshed_from_node)
-  {
-    // clear the wallet so that we re-sync the tree and get received output paths
-    // TODO: may want to warn users that this is happening before doing it, esp. because it'll delete tx dests
-    this->clear_soft(true);
-  }
 
   if (m_blockchain.empty())
   {
@@ -10129,7 +10114,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       size_t requested_outputs_count = base_requested_outputs_count + (td.is_rct() ? CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW - CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE : 0);
       outs.push_back(std::vector<get_outs_entry>());
       outs.back().reserve(fake_outputs_count + 1);
-      const rct::key mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommitVartime(td.amount());
+      const rct::key mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommit(td.amount());
 
       uint64_t num_outs = 0;
       const uint64_t amount = td.is_rct() ? 0 : td.amount();
@@ -10238,7 +10223,7 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     {
       const transfer_details &td = m_transfers[idx];
       std::vector<get_outs_entry> v;
-      const rct::key mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommitVartime(td.amount());
+      const rct::key mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommit(td.amount());
       v.push_back(std::make_tuple(td.m_global_output_index, td.get_public_key(), mask));
       outs.push_back(v);
     }
@@ -15366,7 +15351,6 @@ void wallet2::import_blockchain(const std::tuple<size_t, crypto::hash, std::vect
   crypto::hash genesis_hash = get_block_hash(genesis);
   check_genesis(genesis_hash);
   m_last_block_reward = cryptonote::get_outs_money_amount(genesis.miner_tx);
-  // FIXME: the above is only checking genesis not syncing. This function also needs to import tree elems to work correctly
 }
 //----------------------------------------------------------------------------------------------------
 std::tuple<uint64_t, uint64_t, std::vector<tools::wallet2::exported_transfer_details>> wallet2::export_outputs(bool all, uint32_t start, uint32_t count) const
@@ -16021,12 +16005,6 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     const transfer_details &td = m_transfers[n];
     if (!td.m_key_image_partial)
       continue;
-    // FIXME: if we need to pop more blocks from the tree cache than the reorg depth, and the wallet has received
-    // outputs from before the detach height, then the wallet won't be able to correct those prior output paths.
-    // Some solutions:
-    // A) restart sync from the wallet's first received output height.
-    // B) re-request output paths from the daemon.
-    // C) multisig wallet should stop syncing upon identifying a receive.
     MINFO("Multisig info importing from block height " << td.m_block_height);
     handle_reorg(td.m_block_height);
     break;

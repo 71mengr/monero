@@ -93,6 +93,12 @@ namespace boost
   }
 
   template <class Archive>
+  inline void serialize(Archive &a, crypto::ec_point &x, const boost::serialization::version_type ver)
+  {
+    a & reinterpret_cast<char (&)[sizeof(crypto::ec_point)]>(x);
+  }
+
+  template <class Archive>
   inline void serialize(Archive &a, cryptonote::txout_to_script &x, const boost::serialization::version_type ver)
   {
     a & x.keys;
@@ -343,6 +349,8 @@ namespace boost
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
     a & x.txnFee;
+    if (x.type == rct::RCTTypeFcmpPlusPlus)
+      a & x.referenceBlock;
   }
 
   template <class Archive>
@@ -359,7 +367,10 @@ namespace boost
     if (ver >= 1u)
       a & x.CLSAGs;
     if (ver >= 3u)
-      a & x.FCMPPlusProofs;
+    {
+      a & x.curve_trees_tree_depth;
+      a & x.fcmp_pp;
+    }
     if (x.rangeSigs.empty())
       a & x.pseudoOuts;
   }
@@ -379,6 +390,8 @@ namespace boost
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
     a & x.txnFee;
+    if (x.type == rct::RCTTypeFcmpPlusPlus)
+      a & x.referenceBlock;
     //--------------
     a & x.p.rangeSigs;
     if (x.p.rangeSigs.empty())
@@ -390,10 +403,13 @@ namespace boost
     a & x.p.MGs;
     if (ver >= 1u)
       a & x.p.CLSAGs;
+    if (ver >= 3u)
+    {
+      a & x.p.curve_trees_tree_depth;
+      a & x.p.fcmp_pp;
+    }
     if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG || x.type == rct::RCTTypeBulletproofPlus || x.type == rct::RCTTypeFcmpPlusPlus)
       a & x.p.pseudoOuts;
-    if (x.type == rct::RCTTypeFcmpPlusPlus)
-      a & x.p.FCMPPlusProofs;
   }
 
   template <class Archive>
@@ -434,5 +450,5 @@ namespace boost
 }
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 3)
-BOOST_CLASS_VERSION(rct::rctSig, 2)
+BOOST_CLASS_VERSION(rct::rctSig, 3)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)

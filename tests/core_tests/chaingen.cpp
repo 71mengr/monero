@@ -88,6 +88,8 @@ namespace
         , const uint64_t& coins_generated
         , uint64_t num_rct_outs
         , const crypto::hash& blk_hash
+        , const fcmp_pp::curve_trees::OutputsByLastLockedBlock& outs_by_last_locked_block
+        , const std::unordered_map<uint64_t/*output_id*/, uint64_t/*last locked block_id*/>& timelocked_outputs
     ) override
     {
       blocks.push_back({blk, blk_hash});
@@ -174,7 +176,7 @@ static std::unique_ptr<cryptonote::Blockchain> init_blockchain(const std::vector
 
     const block *blk = &boost::get<block>(ev);
     auto blk_hash = get_block_hash(*blk);
-    bdb->add_block(*blk, 1, 1, 1, 0, 0, blk_hash);
+    bdb->add_block(*blk, 1, 1, 1, 0, 0, blk_hash, {}, {});
   }
 
   bool r = blockchain->init(bdb, nettype, true, test_options, 2, nullptr);
@@ -587,7 +589,7 @@ bool fill_tx_sources(std::vector<tx_source_entry>& sources, const std::vector<te
             ts.rct = false;
             ts.mask = rct::identity();  // non-rct has identity mask by definition
 
-            rct::key comm = rct::zeroCommit(ts.amount);
+            rct::key comm = rct::zeroCommitVartime(ts.amount);
             for(auto & ot : ts.outputs)
               ot.second.mask = comm;
 

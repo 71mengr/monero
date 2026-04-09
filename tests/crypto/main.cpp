@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2014-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -275,6 +275,24 @@ int main(int argc, char *argv[]) {
       get(input, derivation, output_index, expected);
       derive_view_tag(derivation, output_index, actual);
       if (expected != actual) {
+        goto error;
+      }
+    } else if (cmd == "key_image_to_y") {
+      key_image ki;
+      key_image_y expected_ki_y, actual_ki_y;
+      bool expected_sign, actual_sign;
+      get(input, ki, expected_ki_y, expected_sign);
+      actual_sign = key_image_to_y(ki, actual_ki_y);
+      if (expected_ki_y != actual_ki_y || expected_sign != actual_sign) {
+        goto error;
+      }
+    } else if (cmd == "key_image_from_y") {
+      key_image_y ki_y;
+      bool sign;
+      key_image expected_ki, actual_ki;
+      get(input, ki_y, sign, expected_ki);
+      key_image_from_y(ki_y, sign, actual_ki);
+      if (expected_ki != actual_ki) {
         goto error;
       }
     } else {

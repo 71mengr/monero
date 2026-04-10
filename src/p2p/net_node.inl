@@ -649,7 +649,8 @@ namespace nodetool
       return false;
 
     m_service_provider_payment_address.clear();
-    if (command_line::has_arg(vm, arg_be_a_service_provider))
+    if (command_line::has_arg(vm, arg_be_a_service_provider) &&
+        !command_line::is_arg_defaulted(vm, arg_be_a_service_provider))
     {
       const std::string provider_address = command_line::get_arg(vm, arg_be_a_service_provider);
       if (provider_address.empty())

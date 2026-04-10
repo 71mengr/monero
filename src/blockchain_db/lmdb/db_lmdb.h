@@ -44,29 +44,6 @@ namespace cryptonote
 
 namespace fcmp_pp
 {
-namespace curve_trees
-{
-  template <typename C> struct LayerReduction
-  {
-    uint64_t new_node_count = 0;
-    std::vector<uint64_t> trim_instructions;
-  };
-
-  template <typename C> struct TreeReduction
-  {
-    std::vector<LayerReduction<C>> layers;
-  };
-}
-}
-
-struct OutputContext
-{
-  crypto::public_key out_key = crypto::null_pkey;
-  uint64_t amount = 0;
-  uint64_t unlock_time = 0;
-  uint64_t height = 0;
-  bool is_coinbase = false;
-};
 
 typedef struct txindex {
     crypto::hash key;
@@ -92,7 +69,6 @@ typedef struct mdb_txn_cursors
 
   MDB_cursor *m_txc_spent_keys;
 
-  MDB_cursor *m_txc_locked_outputs;
   MDB_cursor *m_txc_leaves;
   MDB_cursor *m_txc_layers;
 
@@ -124,7 +100,6 @@ typedef struct mdb_txn_cursors
 #define m_cur_tx_indices	m_cursors->m_txc_tx_indices
 #define m_cur_tx_outputs	m_cursors->m_txc_tx_outputs
 #define m_cur_spent_keys	m_cursors->m_txc_spent_keys
-#define m_cur_locked_outputs	m_cursors->m_txc_locked_outputs
 #define m_cur_leaves		m_cursors->m_txc_leaves
 #define m_cur_layers		m_cursors->m_txc_layers
 #define m_cur_timelocked_outputs	m_cursors->m_txc_timelocked_outputs
@@ -164,7 +139,6 @@ typedef struct mdb_rflags
   bool m_rf_properties;
   bool m_rf_curve_tree_leaves;
   bool m_rf_curve_tree_nodes;
-  bool m_rf_locked_outputs;
 } mdb_rflags;
 
 typedef struct mdb_threadinfo
@@ -423,14 +397,6 @@ public:
 
   template<typename C_CHILD, typename C_PARENT>
   bool audit_layer(const std::unique_ptr<C_CHILD> &c_child, const std::unique_ptr<C_PARENT> &c_parent, const uint64_t child_layer_idx, const uint64_t chunk_width) const;
-
-  std::vector<OutputContext> get_outs_at_last_locked_block_id(uint64_t block_id) const;
-  void del_locked_outs_at_block_id(uint64_t block_id);
-  std::map<uint64_t, std::vector<OutputContext>> get_custom_timelocked_outputs(uint64_t start_block_idx) const;
-  std::map<uint64_t, std::vector<OutputContext>> get_recent_locked_outputs(uint64_t chain_height) const;
-  virtual void add_curve_tree_leaf(const rct::fcmp_pp::output_tuple &output_tuple) override;
-  virtual rct::key get_curve_tree_root(uint64_t height) const override;
-  virtual void rebuild_curve_tree() override;
 
   virtual bool can_thread_bulk_indices() const { return true; }
 

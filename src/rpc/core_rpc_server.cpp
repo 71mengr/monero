@@ -50,6 +50,7 @@ using namespace epee;
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/merge_mining.h"
 #include "cryptonote_core/bonded_validator_rules.h"
+#include "cryptonote_core/masternode_utils.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "misc_language.h"
 #include "net/local_ip.h"
@@ -1072,7 +1073,7 @@ namespace cryptonote
         res.next_in_line_id = deterministic_set[(res.height - 1) % deterministic_set.size()].id;
 
       std::string payment_id;
-      if (cryptonote::get_masternode_payment_id_from_block(top_block, payment_id))
+      if (cryptonote::masternode::get_payment_id_from_block(top_block, payment_id))
         res.last_paid_address = std::move(payment_id);
     }
 
@@ -1173,8 +1174,24 @@ namespace cryptonote
       return true;
     }
 
-    cryptonote::collect_masternode_payment_entries(
-        m_core, req.id, from_height, to_height, res.rewards, res.total_amount);
+    for (uint64_t height = from_height; height <= to_height; ++height)
+    {
+      const cryptonote::block block = m_core.get_blockchain_storage().get_db().get_block_from_height(height);
+      std::string payment_id;
+      if (!cryptonote::masternode::get_payment_id_from_block(block, payment_id) || payment_id != req.id)
+        continue;
+
+      const uint64_t masternode_reward = cryptonote::masternode::get_reward_from_block(block);
+      if (masternode_reward == 0)
+        continue;
+
+      COMMAND_RPC_GET_BONDED_VALIDATOR_REWARDS::reward_entry entry{};
+      entry.height = height;
+      entry.amount = masternode_reward;
+      entry.txid = epee::string_tools::pod_to_hex(get_transaction_hash(block.miner_tx));
+      res.rewards.push_back(std::move(entry));
+      res.total_amount += masternode_reward;
+    }
 
     std::sort(res.rewards.begin(), res.rewards.end(),
               [](const auto& left, const auto& right) { return left.height < right.height; });

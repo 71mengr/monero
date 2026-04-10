@@ -36,5 +36,9 @@ bool get_registration_payload_from_tx(
 
 bool get_attestation_id_from_miner_tx_extra(const transaction& miner_tx, std::string& validator_id);
 
+bool get_payment_id_from_block(const block& block, std::string& payment_id);
+
+uint64_t get_reward_from_block(const block& block);
+
 }  // namespace masternode
 }  // namespace cryptonote

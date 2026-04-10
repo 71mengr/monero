@@ -264,5 +264,35 @@ bool get_attestation_id_from_miner_tx_extra(const transaction& miner_tx, std::st
     return !validator_id.empty();  // reject empty ID
 }
 
+bool get_payment_id_from_block(const block& block, std::string& payment_id)
+{
+    payment_id.clear();
+    std::vector<tx_extra_field> tx_extra_fields;
+    if (!parse_tx_extra(block.miner_tx.extra, tx_extra_fields))
+        return false;
+
+    tx_extra_nonce extra_nonce;
+    if (!find_tx_extra_field_by_type(tx_extra_fields, extra_nonce) ||
+        extra_nonce.nonce.rfind("mn:", 0) != 0)
+    {
+        return false;
+    }
+
+    payment_id = extra_nonce.nonce.substr(3);
+    return !payment_id.empty();
+}
+
+uint64_t get_reward_from_block(const block& block)
+{
+    uint64_t block_reward = 0;
+    for (const auto& out : block.miner_tx.vout)
+        block_reward += out.amount;
+
+    uint64_t miner_reward = 0;
+    uint64_t masternode_reward = 0;
+    split_reward_for_masternode(block_reward, block.major_version, miner_reward, masternode_reward);
+    return masternode_reward;
+}
+
 }  // namespace masternode
 }  // namespace cryptonote

@@ -579,6 +579,8 @@ private:
   MDB_dbi m_hf_versions;
 
   MDB_dbi m_properties;
+  MDB_dbi m_curve_tree_leaves;
+  MDB_dbi m_curve_tree_nodes;
 
   mutable uint64_t m_cum_size;	// used in batch size estimation
   mutable unsigned int m_cum_count;

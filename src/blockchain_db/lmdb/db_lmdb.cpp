@@ -248,7 +248,6 @@ const char* const LMDB_HF_VERSIONS = "hf_versions";
 const char* const LMDB_PROPERTIES = "properties";
 const char* const LMDB_CURVE_TREE_LEAVES = "curve_tree_leaves";
 const char* const LMDB_CURVE_TREE_NODES = "curve_tree_nodes";
-const char* const LMDB_LOCKED_OUTPUTS = "locked_outputs";
 const char* const LMDB_MASTERNODE_PREFIX = "masternode:";
 
 const char zerokey[8] = {0};
@@ -5870,7 +5869,7 @@ void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
   {
     BlockchainDB::pop_block(blk, txs);
     if (height() > 0 && use_fcmpp(height() - 1))
-      trim_block(height() - 1);
+      trim_block();
     std::size_t removed_leaves = 0;
     const auto count_leaves = [&](const transaction &tx)
     {
@@ -5955,7 +5954,7 @@ rct::key BlockchainLMDB::get_curve_tree_root(uint64_t height) const
 {
   if (!use_fcmpp(height))
     return rct::zero();
-  const crypto::ec_point root = get_tree_root(height);
+  const crypto::ec_point root = get_tree_root();
   rct::key out;
   memcpy(&out, &root, sizeof(out));
   return out;
@@ -8105,18 +8104,13 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
     migrate_5_6();
 }
 
-struct SeleneCurve {};
-struct HeliosCurve {};
-
-template void BlockchainLMDB::grow_layer<SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const std::vector<crypto::ec_point> &, const uint64_t);
-template void BlockchainLMDB::grow_layer<HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const std::vector<crypto::ec_point> &, const uint64_t);
-template void BlockchainLMDB::trim_layer<SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const fcmp_pp::curve_trees::LayerReduction<SeleneCurve> &, const uint64_t);
-template void BlockchainLMDB::trim_layer<HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const fcmp_pp::curve_trees::LayerReduction<HeliosCurve> &, const uint64_t);
-template fcmp_pp::curve_trees::TreeReduction<SeleneCurve> BlockchainLMDB::get_tree_reduction<SeleneCurve>(uint64_t) const;
-template fcmp_pp::curve_trees::TreeReduction<HeliosCurve> BlockchainLMDB::get_tree_reduction<HeliosCurve>(uint64_t) const;
-template bool BlockchainLMDB::audit_layer<SeleneCurve, SeleneCurve>(const std::unique_ptr<SeleneCurve> &, const std::unique_ptr<SeleneCurve> &, const uint64_t, const uint64_t) const;
-template bool BlockchainLMDB::audit_layer<SeleneCurve, HeliosCurve>(const std::unique_ptr<SeleneCurve> &, const std::unique_ptr<HeliosCurve> &, const uint64_t, const uint64_t) const;
-template bool BlockchainLMDB::audit_layer<HeliosCurve, SeleneCurve>(const std::unique_ptr<HeliosCurve> &, const std::unique_ptr<SeleneCurve> &, const uint64_t, const uint64_t) const;
-template bool BlockchainLMDB::audit_layer<HeliosCurve, HeliosCurve>(const std::unique_ptr<HeliosCurve> &, const std::unique_ptr<HeliosCurve> &, const uint64_t, const uint64_t) const;
+template void BlockchainLMDB::grow_layer<fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const std::vector<fcmp_pp::curve_trees::LayerExtension<fcmp_pp::curve_trees::Selene>> &, const uint64_t, const uint64_t);
+template void BlockchainLMDB::grow_layer<fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::vector<fcmp_pp::curve_trees::LayerExtension<fcmp_pp::curve_trees::Helios>> &, const uint64_t, const uint64_t);
+template void BlockchainLMDB::trim_layer<fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const fcmp_pp::curve_trees::LayerReduction<fcmp_pp::curve_trees::Selene> &, const uint64_t);
+template void BlockchainLMDB::trim_layer<fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const fcmp_pp::curve_trees::LayerReduction<fcmp_pp::curve_trees::Helios> &, const uint64_t);
+template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Selene, fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Selene, fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Helios, fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const uint64_t, const uint64_t) const;
+template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Helios, fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const uint64_t, const uint64_t) const;
 
 }  // namespace cryptonote

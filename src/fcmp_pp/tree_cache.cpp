@@ -335,10 +335,11 @@ static void cache_path_chunk(const std::unique_ptr<C> &curve,
     // If no cache hit, add collected chunk to the cache
     if (!layer_cache_hit)
     {
-        cached_tree_elems_inout[layer_idx] = {{ parent_idx, CachedTreeElemChunk{
-                .tree_elems = std::move(new_elems),
-                .ref_count  = 1,
-            }}};
+        auto &layer_cache = cached_tree_elems_inout[layer_idx];
+        layer_cache[parent_idx] = CachedTreeElemChunk{
+            .tree_elems = std::move(new_elems),
+            .ref_count  = 1,
+        };
     }
     else if (!cache_hit)
     {

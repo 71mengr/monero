@@ -42,9 +42,6 @@
 namespace cryptonote
 {
 
-namespace fcmp_pp
-{
-
 typedef struct txindex {
     crypto::hash key;
     tx_data_t data;

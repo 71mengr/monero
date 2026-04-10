@@ -43,7 +43,8 @@ namespace cryptonote
 namespace
 {
 constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
-constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = (30ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;
+constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_SECONDS = 30ULL * 24ULL * 60ULL * 60ULL;
+constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_SECONDS / DIFFICULTY_TARGET_V2;
 constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "monero-masternode-registration-v2";
 
 // Helper to safely add with overflow check
@@ -169,38 +170,26 @@ bool validate_registration_rules_for_block(
         if (out.amount != registration.collateral_amount)
             return false;
 
-        // Check that the output is still unspent
-        if (db.is_output_spent(registration.collateral_outpoint.txid, registration.collateral_outpoint.vout))
-            return false;
-
-        // Unlock time validation – supports both block height and timestamp locks
-        uint64_t current_unlock_time;
+        // Enforce minimum lock period for both height- and timestamp-based locks.
         if (collateral_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
         {
-            // Block height lock
-            current_unlock_time = collateral_tx.unlock_time;
+            const uint64_t current_unlock_height = collateral_tx.unlock_time;
+            uint64_t min_lock_height;
+            if (add_overflow(block_height, MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS, min_lock_height))
+                return false;
+            if (current_unlock_height < min_lock_height)
+                return false;
         }
         else
         {
-            // Timestamp lock: convert to equivalent block height using median timestamp
-            // (We assume the DB can give median timestamp for a given height)
-            uint64_t median_ts = db.get_median_timestamp_for_height(block_height);
-            if (median_ts == 0)
+            const uint64_t reference_height = block_height == 0 ? 0 : block_height - 1;
+            const uint64_t reference_time = db.get_block_timestamp(reference_height);
+            uint64_t min_lock_time;
+            if (add_overflow(reference_time, MASTERNODE_MIN_COLLATERAL_LOCK_SECONDS, min_lock_time))
                 return false;
-            // Approximate: each block takes DIFFICULTY_TARGET_V2 seconds
-            uint64_t lock_height = (collateral_tx.unlock_time - median_ts) / DIFFICULTY_TARGET_V2;
-            if (lock_height > block_height)
-                current_unlock_time = lock_height;
-            else
-                current_unlock_time = block_height; // already unlocked
+            if (collateral_tx.unlock_time < min_lock_time)
+                return false;
         }
-
-        // Enforce minimum lock period
-        uint64_t min_lock_height;
-        if (add_overflow(block_height, MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS, min_lock_height))
-            return false;
-        if (current_unlock_time < min_lock_height)
-            return false;
 
         // Maturity: collateral must be at least CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE blocks old
         const uint64_t collateral_height = db.get_tx_block_height(registration.collateral_outpoint.txid);

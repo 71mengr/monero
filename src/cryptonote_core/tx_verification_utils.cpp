@@ -62,7 +62,7 @@ static bool expand_tx_and_ver_rct_non_sem(transaction& tx, const rct::ctkeyM& mi
     VER_ASSERT(rv.mixRing == mix_ring, "Failed to check ringct signatures: mismatched pubkeys/mixRing");
 
     // Check CLSAG/MLSAG size against transaction input
-    const size_t n_sigs = rv.type == rct::RCTTypeFcmpPlusPlus ? rv.p.FCMPPlusProofs.size() : (rct::is_rct_clsag(rv.type) ? rv.p.CLSAGs.size() : rv.p.MGs.size());
+    const size_t n_sigs = rv.type == rct::RCTTypeFcmpPlusPlus ? tx.vin.size() : (rct::is_rct_clsag(rv.type) ? rv.p.CLSAGs.size() : rv.p.MGs.size());
     VER_ASSERT(n_sigs == tx.vin.size(), "Failed to check ringct signatures: mismatched input sigs/vin sizes");
 
     // For each input, check that the key images were copied into the expanded RCT sig correctly

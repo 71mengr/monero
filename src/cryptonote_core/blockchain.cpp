@@ -4044,7 +4044,8 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
   {
     if (!tx.pruned)
     {
-      CHECK_AND_ASSERT_MES(rv.p.FCMPPlusProofs.size() == tx.vin.size(), false, "Bad FCMPPlusProofs size");
+      const std::size_t expected_proof_len = fcmp_pp::proof_len(tx.vin.size(), rv.p.curve_trees_tree_depth);
+      CHECK_AND_ASSERT_MES(rv.p.fcmp_pp.size() == expected_proof_len, false, "Bad FCMP++ proof size");
     }
   }
   else

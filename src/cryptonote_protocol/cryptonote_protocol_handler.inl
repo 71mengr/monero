@@ -967,6 +967,7 @@ namespace cryptonote
       heartbeat.timestamp = now;
       heartbeat.checkpoint_height = checkpoint_height;
       heartbeat.checkpoint_hash = checkpoint_hash;
+      heartbeat.chain_tip_hash = epee::string_tools::pod_to_hex(m_core.get_tail_id());
       heartbeat.signature = "p2p-heartbeat:" + std::to_string(current_height) + ":" + std::to_string(checkpoint_height) + ":" + checkpoint_hash + ":" + masternode.id;
 
       if (!remember_masternode_heartbeat(heartbeat))
@@ -998,6 +999,12 @@ namespace cryptonote
     proof.timestamp = arg.heartbeat.timestamp;
     proof.checkpoint_height = arg.heartbeat.checkpoint_height;
     proof.checkpoint_hash = arg.heartbeat.checkpoint_hash;
+    if (!epee::string_tools::hex_to_pod(arg.heartbeat.chain_tip_hash, proof.chain_tip_hash))
+    {
+      MERROR("Dropping malformed masternode heartbeat: invalid chain tip hash encoding");
+      hit_score(context, 1);
+      return 1;
+    }
     proof.signature = arg.heartbeat.signature;
 
     std::string reason;

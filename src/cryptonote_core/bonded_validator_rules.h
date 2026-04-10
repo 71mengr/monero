@@ -122,6 +122,7 @@ namespace cryptonote
     uint64_t duty_slot = 0;
     uint8_t reason_code = 0;
     uint64_t evidence_height = 0;
+    crypto::hash chain_tip_hash = crypto::null_hash;
     std::vector<std::string> signatures;
 
     bool is_well_formed(size_t min_signatures, std::string* reason = nullptr) const;
@@ -134,6 +135,7 @@ namespace cryptonote
     uint64_t timestamp = 0;
     uint64_t checkpoint_height = 0;
     std::string checkpoint_hash;
+    crypto::hash chain_tip_hash = crypto::null_hash;
     std::string signature;
 
     bool is_well_formed(std::string* reason = nullptr) const;
@@ -144,6 +146,7 @@ namespace cryptonote
     std::string validator_id;
     crypto::hash challenge = crypto::null_hash;
     crypto::hash response = crypto::null_hash;
+    crypto::hash chain_tip_hash = crypto::null_hash;
     std::string signature;
 
     bool is_well_formed(std::string* reason = nullptr) const;
@@ -154,6 +157,7 @@ namespace cryptonote
     uint64_t height = 0;
     std::string block_hash;
     uint64_t quorum_epoch = 0;
+    crypto::hash chain_tip_hash = crypto::null_hash;
     std::vector<std::string> signatures;
 
     bool is_well_formed(size_t min_signatures, std::string* reason = nullptr) const;

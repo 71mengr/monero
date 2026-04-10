@@ -74,7 +74,6 @@ bool non_empty_trimmed(const std::string& value)
     return !epee::string_tools::trim(value).empty();
 }
 
-// Helper to build a signing context for a proof that includes chain tip hash to prevent replay
 std::string build_signing_context(const crypto::hash& chain_tip_hash, const std::string& proof_specific_data)
 {
     std::string ctx;
@@ -353,7 +352,6 @@ bool deregistration_proof::is_well_formed(size_t min_signatures, std::string* re
             return false;
         }
     }
-    // Ensure the chain_tip_hash is present (replay protection)
     if (chain_tip_hash == crypto::null_hash)
     {
         if (reason) *reason = "chain tip hash must be set for replay protection";
@@ -664,16 +662,18 @@ uint64_t compute_unlock_height(
 
 std::string make_deregistration_proof_key(const deregistration_proof& proof)
 {
-    std::string key;
-    key.reserve(proof.validator_id.size() + 48);
-    key.append(proof.validator_id);
-    key.push_back(':');
-    key.append(std::to_string(proof.epoch));
-    key.push_back(':');
-    key.append(std::to_string(proof.duty_slot));
-    key.push_back(':');
-    key.append(std::to_string(proof.reason_code));
-    return key;
+    std::string proof_specific_key;
+    proof_specific_key.reserve(proof.validator_id.size() + 48);
+    proof_specific_key.append(proof.validator_id);
+    proof_specific_key.push_back(':');
+    proof_specific_key.append(std::to_string(proof.epoch));
+    proof_specific_key.push_back(':');
+    proof_specific_key.append(std::to_string(proof.duty_slot));
+    proof_specific_key.push_back(':');
+    proof_specific_key.append(std::to_string(proof.reason_code));
+
+    const std::string signing_context = build_signing_context(proof.chain_tip_hash, proof_specific_key);
+    return epee::string_tools::pod_to_hex(crypto::cn_fast_hash(signing_context.data(), signing_context.size()));
 }
 
 bool signatures_are_canonical_and_unique(const std::vector<std::string>& signatures)

@@ -231,6 +231,7 @@ namespace cryptonote
     uint64_t timestamp = 0;
     uint64_t checkpoint_height = 0;
     std::string checkpoint_hash;
+    std::string chain_tip_hash;
     std::string signature;
 
     BEGIN_KV_SERIALIZE_MAP()
@@ -239,6 +240,7 @@ namespace cryptonote
       KV_SERIALIZE(timestamp)
       KV_SERIALIZE_OPT(checkpoint_height, (uint64_t)0)
       KV_SERIALIZE_OPT(checkpoint_hash, std::string())
+      KV_SERIALIZE_OPT(chain_tip_hash, std::string())
       KV_SERIALIZE(signature)
     END_KV_SERIALIZE_MAP()
   };

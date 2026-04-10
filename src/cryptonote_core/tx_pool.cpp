@@ -929,24 +929,18 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::get_complement(std::vector<crypto::hash> hashes, std::vector<cryptonote::blobdata> &txes) const
+  bool tx_memory_pool::get_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes) const
   {
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
-
-    // Sort so we can do binary search later
-    std::sort(hashes.begin(), hashes.end());
 
     m_blockchain.for_all_txpool_txes([this, &hashes, &txes](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref*) {
       const auto tx_relay_method = meta.get_relay_method();
       if (tx_relay_method != relay_method::block && tx_relay_method != relay_method::fluff)
         return true;
 
-      // Do binary search for our pool TXID in given list, skip to next if already present
-      const auto hash_it = std::lower_bound(hashes.cbegin(), hashes.cend(), txid);
-      if (hash_it != hashes.cend() && *hash_it == txid)
-        return true;
-
+      const auto hash_it = std::find(hashes.cbegin(), hashes.cend(), txid);
+      if (hash_it == hashes.cend())
       {
         cryptonote::blobdata bd;
         try
@@ -1512,11 +1506,6 @@ namespace cryptonote
             ki_info_no_sign.txs_hashes.push_back(epee::string_tools::pod_to_hex(tx_hash));
           }
         }
-
-      for (const crypto::hash& tx_id_hash : kei_image_set)
-      {
-        if (m_blockchain.txpool_tx_matches_category(tx_id_hash, category))
-          ki.txs_hashes.push_back(epee::string_tools::pod_to_hex(tx_id_hash));
       }
 
       // Only return key images for which we have at least one tx that we can show for them

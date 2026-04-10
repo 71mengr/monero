@@ -513,7 +513,7 @@ namespace cryptonote
     /**
      * @brief get transactions not in the passed set
      */
-    bool get_complement(std::vector<crypto::hash> hashes, std::vector<cryptonote::blobdata> &txes) const;
+    bool get_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes) const;
 
     /**
      * @brief get info necessary for update of pool-related info in a wallet, preferably incremental
@@ -750,6 +750,5 @@ namespace boost
 }
 BOOST_CLASS_VERSION(cryptonote::tx_memory_pool, CURRENT_MEMPOOL_ARCHIVE_VER)
 BOOST_CLASS_VERSION(cryptonote::tx_memory_pool::tx_details, CURRENT_MEMPOOL_TX_DETAILS_ARCHIVE_VER)
-
 
 

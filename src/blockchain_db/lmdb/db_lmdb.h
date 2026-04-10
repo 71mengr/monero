@@ -373,28 +373,6 @@ public:
   virtual rct::key get_curve_tree_root(uint64_t height) const override;
   virtual void rebuild_curve_tree() override;
 
-  template<typename C>
-  void grow_layer(const std::unique_ptr<C> &curve, const std::vector<crypto::ec_point> &nodes, const uint64_t layer_idx);
-
-  template<typename C>
-  void trim_layer(const std::unique_ptr<C> &curve, const fcmp_pp::curve_trees::LayerReduction<C> &layer_reduction, const uint64_t layer_idx);
-
-  void trim_block(uint64_t height);
-
-  template<typename C>
-  fcmp_pp::curve_trees::TreeReduction<C> get_tree_reduction(uint64_t new_n_leaf_tuples) const;
-
-  uint64_t get_n_leaf_tuples() const;
-  uint64_t get_block_n_leaf_tuples(uint64_t block_height) const;
-  crypto::ec_point get_tree_root(uint64_t height) const;
-  using LastHashes = std::vector<crypto::hash>;
-  LastHashes get_tree_last_hashes(uint64_t height) const;
-  std::vector<std::vector<crypto::ec_point>> get_last_chunk_children_for_trim(const std::vector<uint64_t> &trim_instructions) const;
-  LastHashes get_last_hashes_for_trim(const std::vector<uint64_t> &trim_instructions) const;
-
-  template<typename C_CHILD, typename C_PARENT>
-  bool audit_layer(const std::unique_ptr<C_CHILD> &c_child, const std::unique_ptr<C_PARENT> &c_parent, const uint64_t child_layer_idx, const uint64_t chunk_width) const;
-
   virtual bool can_thread_bulk_indices() const { return true; }
 
   /**
@@ -601,9 +579,6 @@ private:
   MDB_dbi m_hf_versions;
 
   MDB_dbi m_properties;
-  MDB_dbi m_curve_tree_leaves;
-  MDB_dbi m_curve_tree_nodes;
-  MDB_dbi m_locked_outputs;
 
   mutable uint64_t m_cum_size;	// used in batch size estimation
   mutable unsigned int m_cum_count;

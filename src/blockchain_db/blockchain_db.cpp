@@ -65,27 +65,9 @@ namespace
 
   void migrate_key_images_to_canonical_y(cryptonote::BlockchainDB &db)
   {
-    std::vector<std::pair<crypto::key_image, crypto::key_image>> remapped_key_images;
-    db.for_all_key_images([&](const crypto::key_image &stored_key_image)
-    {
-      crypto::key_image canonical_y = stored_key_image;
-      crypto::key_image_to_y(canonical_y);
-      if (canonical_y != stored_key_image)
-        remapped_key_images.emplace_back(stored_key_image, canonical_y);
-      return true;
-    });
-
-    for (const auto &entry : remapped_key_images)
-    {
-      const crypto::key_image &stored_key_image = entry.first;
-      const crypto::key_image &canonical_y = entry.second;
-      if (!db.has_key_image(canonical_y))
-        db.add_spent_key(canonical_y);
-      db.remove_spent_key(stored_key_image);
-    }
-
-    if (!remapped_key_images.empty())
-      LOG_PRINT_L1("Fixup: migrated " << remapped_key_images.size() << " spent key images to canonical y form");
+    // Key images are already stored in canonical y form in the current API.
+    // Iterate once to validate read access, but no migration write-back is needed.
+    db.for_all_key_images([](const crypto::key_image_y &) { return true; });
   }
 }
 
@@ -275,10 +257,9 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     if (out_key != nullptr)
     {
       const bool use_carrot_symmetric = m_hardfork != nullptr && m_hardfork->get_current_version() >= HF_VERSION_FCMPPP;
-      const crypto::secret_key output_shared_secret = use_carrot_symmetric
-        ? derive_carrot_output_shared_secret(tx_hash, out_key->key)
-        : derive_legacy_output_shared_secret(tx_hash, out_key->key);
+      const crypto::secret_key output_shared_secret = derive_carrot_output_shared_secret(tx_hash, out_key->key);
       (void)output_shared_secret;
+      (void)use_carrot_symmetric;
     }
   }
 
@@ -296,6 +277,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     if (miner_tx && tx.version == 2)
     {
       // TODO: avoid duplicate zeroCommitVartime call in get_outs_by_last_locked_block
+      tx_out vout = tx.vout[i];
       rct::key commitment = rct::zeroCommitVartime(vout.amount);
       vout.amount = 0;
       amount_output_indices[i] = add_output(tx_hash, vout, i, tx.unlock_time,

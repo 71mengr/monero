@@ -37,10 +37,35 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
+#include "serialization/binary_utils.h"
+#include "string_tools.h"
 
 namespace
 {
   uint64_t const TEST_FEE = 5000000000; // 5 * 10^9
+
+  cryptonote::masternode_registration_payload make_masternode_registration_payload()
+  {
+    crypto::public_key operator_pubkey{};
+    crypto::secret_key operator_secret_key{};
+    crypto::generate_keys(operator_pubkey, operator_secret_key);
+
+    cryptonote::masternode_registration_payload payload{};
+    payload.version = cryptonote::TX_EXTRA_MASTERNODE_REGISTRATION_VERSION;
+    payload.operator_pubkey = operator_pubkey;
+    payload.collateral_outpoint.txid = crypto::rand<crypto::hash>();
+    payload.collateral_outpoint.vout = 5;
+    payload.collateral_amount = 2500000000000;
+    payload.service_endpoint_commitment = crypto::rand<crypto::hash>();
+    payload.has_valid_from_height = true;
+    payload.valid_from_height = 144;
+
+    crypto::hash preimage_hash{};
+    EXPECT_TRUE(cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash));
+    crypto::generate_signature(preimage_hash, operator_pubkey, operator_secret_key, payload.operator_signature);
+
+    return payload;
+  }
 }
 
 TEST(parse_tx_extra, handles_empty_extra)
@@ -193,6 +218,28 @@ TEST(masternode_registration_tx_extra, rejects_invalid_signature)
 
   std::vector<uint8_t> extra{};
   ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
+}
+
+TEST(masternode_registration_tx_extra, payload_string_roundtrip)
+{
+  const auto payload = make_masternode_registration_payload();
+
+  cryptonote::blobdata payload_blob;
+  ASSERT_TRUE(t_serializable_object_to_blob(payload, payload_blob));
+  const std::string payload_hex = epee::string_tools::buff_to_hex_nodelimer(payload_blob);
+
+  std::vector<uint8_t> extra{};
+  ASSERT_TRUE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload_hex));
+
+  std::string decoded_hex;
+  ASSERT_TRUE(cryptonote::get_masternode_registration_from_tx_extra(extra, decoded_hex));
+  ASSERT_EQ(payload_hex, decoded_hex);
+}
+
+TEST(masternode_registration_tx_extra, rejects_non_hex_payload_string)
+{
+  std::vector<uint8_t> extra{};
+  ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, "zzzz"));
 }
 
 TEST(parse_and_validate_tx_extra, is_valid_tx_extra_parsed)

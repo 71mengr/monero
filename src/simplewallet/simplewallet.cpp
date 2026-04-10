@@ -1181,6 +1181,11 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
       fail_msg_writer() << tr("No outputs found, or daemon is not ready");
       return true;
     }
+    if (m_wallet->use_fork_rules(HF_VERSION_FCMPPP, 0) && ptx_vector.front().tx.rct_signatures.type != rct::RCTTypeFcmpPlusPlus)
+    {
+      fail_msg_writer() << tr("Failed to construct FCMP++ transaction for masternode registration");
+      return true;
+    }
 
     // This command is expected to broadcast registration transactions immediately.
     commit_or_save(ptx_vector, false);

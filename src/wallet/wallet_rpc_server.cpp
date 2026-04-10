@@ -1392,6 +1392,12 @@ namespace tools
         er.message = "Transaction would be too large";
         return false;
       }
+      if (m_wallet->use_fork_rules(HF_VERSION_FCMPPP, 0) && ptx_vector.front().tx.rct_signatures.type != rct::RCTTypeFcmpPlusPlus)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = "Failed to construct FCMP++ transaction for token creation";
+        return false;
+      }
 
       return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
         res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
@@ -1450,6 +1456,12 @@ namespace tools
       {
         er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
         er.message = "Transaction would be too large";
+        return false;
+      }
+      if (m_wallet->use_fork_rules(HF_VERSION_FCMPPP, 0) && ptx_vector.front().tx.rct_signatures.type != rct::RCTTypeFcmpPlusPlus)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = "Failed to construct FCMP++ transaction for token creation";
         return false;
       }
 
@@ -1512,6 +1524,12 @@ namespace tools
         er.message = "Transaction would be too large";
         return false;
       }
+      if (m_wallet->use_fork_rules(HF_VERSION_FCMPPP, 0) && ptx_vector.front().tx.rct_signatures.type != rct::RCTTypeFcmpPlusPlus)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = "Failed to construct FCMP++ transaction for token mint";
+        return false;
+      }
 
       return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
         res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, res.spent_key_images, er);
@@ -1570,6 +1588,12 @@ namespace tools
       {
         er.code = WALLET_RPC_ERROR_CODE_TX_TOO_LARGE;
         er.message = "Transaction would be too large";
+        return false;
+      }
+      if (m_wallet->use_fork_rules(HF_VERSION_FCMPPP, 0) && ptx_vector.front().tx.rct_signatures.type != rct::RCTTypeFcmpPlusPlus)
+      {
+        er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
+        er.message = "Failed to construct FCMP++ transaction for token transfer";
         return false;
       }
 

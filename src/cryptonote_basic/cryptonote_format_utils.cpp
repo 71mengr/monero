@@ -127,7 +127,7 @@ namespace cryptonote
 
 namespace cryptonote
 {
-  static inline bool rct_type_supports_pruned_weight(const rct::RCTType type)
+  static inline bool rct_type_supports_pruned_weight(const uint8_t type)
   {
     return type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG || type == rct::RCTTypeBulletproofPlus || type == rct::RCTTypeFcmpPlusPlus;
   }

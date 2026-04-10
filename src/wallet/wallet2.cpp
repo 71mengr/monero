@@ -1676,7 +1676,7 @@ bool wallet2::should_expand(const cryptonote::subaddress_index &index) const
 void wallet2::expand_subaddresses(const cryptonote::subaddress_index& index)
 {
   // check if index will overflow container (usually only applicable on 32-bit systems)
-  if constexpr (sizeof(std::size_t) <= sizeof(std::uint32_t))
+  if (sizeof(std::size_t) <= sizeof(std::uint32_t))
   {
     static constexpr std::uint32_t max_idx = static_cast<std::uint32_t>(std::numeric_limits<std::size_t>::max());
     const bool cannot_label_index = index.major == max_idx || index.minor == max_idx;
@@ -3802,7 +3802,7 @@ void wallet2::pull_and_parse_next_blocks(bool first, bool try_incremental, uint6
     std::vector<cryptonote::COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices> o_indices;
     uint64_t current_height;
     boost::optional<cryptonote::COMMAND_RPC_GET_BLOCKS_FAST::init_tree_sync_data_t> init_tree_sync_data;
-    pull_blocks(first, try_incremental, start_height, blocks_start_height, short_chain_history, blocks, o_indices, current_height, process_pool_txs, init_tree_sync_data);
+    pull_blocks(first, try_incremental, start_height, blocks_start_height, short_chain_history, blocks, o_indices, current_height, m_process_pool_txs, init_tree_sync_data);
     THROW_WALLET_EXCEPTION_IF(blocks.size() != o_indices.size(), error::wallet_internal_error, "Mismatched sizes of blocks and o_indices");
 
     tools::threadpool& tpool = tools::threadpool::getInstanceForCompute();
@@ -9535,7 +9535,7 @@ void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_
       string_tools::hex_to_pod(ores.amount_outs[amount_key].outputs[i].public_key, tx_public_key);
       const uint64_t global_index = ores.amount_outs[amount_key].outputs[i].global_index;
       if(!light_wallet_parse_rct_str(ores.amount_outs[amount_key].outputs[i].rct, tx_public_key, 0, mask, rct_commit, false))
-        rct_commit = rct::zeroCommit(td.amount());
+        rct_commit = rct::zeroCommitVartime(td.amount());
       
       if (tx_add_fake_output(outs, global_index, tx_public_key, rct_commit, td.m_global_output_index, true, valid_public_keys_cache)) {
         MDEBUG("added fake output " << ores.amount_outs[amount_key].outputs[i].public_key);
@@ -12800,7 +12800,7 @@ void wallet2::get_mvm_contract_history(std::vector<mvm_contract_entry> &contract
   std::sort(contracts.begin(), contracts.end(), [](const mvm_contract_entry &lhs, const mvm_contract_entry &rhs) {
     if (lhs.block_height != rhs.block_height)
       return lhs.block_height < rhs.block_height;
-    return lhs.txid < rhs.txid;
+    return memcmp(&lhs.txid, &rhs.txid, sizeof(lhs.txid)) < 0;
   });
 }
 //----------------------------------------------------------------------------------------------------

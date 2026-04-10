@@ -189,7 +189,7 @@ static bool inv_psi2(fe u_out, fe w_out, const fe e, const fe u, const fe w)
 
 static bool check_e_u_w(const fe e, const fe u, const fe w)
 {
-    static fe a;
+    fe a;
     fe_1(a);
     fe_neg(a, a);
     fe A;
@@ -202,21 +202,23 @@ static bool check_e_u_w(const fe e, const fe u, const fe w)
     fe_sq(w_sq, w);
     fe_mul(u_w_sq, u, w_sq);
 
-    fe u_sq, A_u_mul_e_sq, e_sq, e_sq_sq, B_mul_e_sq_sq, sum;
+    fe u_sq, e_sq, e_sq_sq;
     fe_sq(u_sq, u);
-    fe_mul(A_u_mul_e_sq, A, u);
     fe_sq(e_sq, e);
-    fe_mul(A_u_mul_e_sq, A_u_mul_e_sq, e_sq);
     fe_sq(e_sq_sq, e_sq);
+
+    fe A_u_mul_e_sq, B_mul_e_sq_sq;
+    fe_mul(A_u_mul_e_sq, A, u);
+    fe_mul(A_u_mul_e_sq, A_u_mul_e_sq, e_sq);
     fe_mul(B_mul_e_sq_sq, B, e_sq_sq);
 
     fe_reduce(A_u_mul_e_sq, A_u_mul_e_sq);
-    fe_add(sum, u_sq, A_u_mul_e_sq);
-
-    fe_reduce(sum, sum);
     fe_reduce(B_mul_e_sq_sq, B_mul_e_sq_sq);
-    fe_add(sum, sum, B_mul_e_sq_sq);
 
+    fe sum;
+    fe_add(sum, u_sq, A_u_mul_e_sq);
+    fe_reduce(sum, sum);
+    fe_add(sum, sum, B_mul_e_sq_sq);
     fe_reduce(sum, sum);
 
     if (memcmp(u_w_sq, sum, sizeof(fe)) != 0) {
@@ -234,11 +236,9 @@ bool mul8_is_identity(const ge_p3 &point) {
     ge_p3_to_p2(&point_ge_p2, &point);
     ge_p1p1 point_mul8;
     ge_mul8(&point_mul8, &point_ge_p2);
-    ge_p2 point_mul8_p2;
-    ge_p1p1_to_p2(&point_mul8_p2, &point_mul8);
-    rct::key tmp;
-    ge_tobytes(tmp.bytes, &point_mul8_p2);
-    return tmp == rct::I;
+    ge_p3 point_mul8_p3;
+    ge_p1p1_to_p3(&point_mul8_p3, &point_mul8);
+    return ge_p3_is_point_at_infinity_vartime(&point_mul8_p3);
 }
 //----------------------------------------------------------------------------------------------------------------------
 // https://github.com/kayabaNerve/fcmp-plus-plus/blob/94744c5324e869a9483bbbd93a864e108304bf76/crypto/divisors/src/tests/torsion_check.rs
@@ -330,6 +330,21 @@ bool point_to_wei_x(const rct::key &pub, rct::key &wei_x) {
         return false;
     ed_y_derivatives_to_wei_x(ed_y_derivatives, wei_x);
     return true;
+}
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+void scalarmult_and_add(unsigned char *Q, const ge_p3 &P, const unsigned char *a, const ge_p3 &A)
+{
+    ge_p2 p2;
+    ge_p3 p3;
+    ge_p1p1 p1p1;
+    ge_cached c;
+
+    ge_p3_to_cached(&c, &P);
+    ge_scalarmult_p3(&p3, a, &A);
+    ge_add(&p1p1, &p3, &c);
+    ge_p1p1_to_p2(&p2, &p1p1);
+    ge_tobytes(Q, &p2);
 }
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------

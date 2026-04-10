@@ -30,8 +30,8 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "fcmp_pp_crypto.h"
+#include "fcmp_pp_types.h"
 #include "misc_log_ex.h"
 #include "serialization/keyvalue_serialization.h"
 #include "tower_cycle.h"
@@ -54,15 +54,6 @@ struct LayerExtension final
     uint64_t                       start_idx{0};
     bool                           update_existing_last_hash;
     std::vector<typename C::Point> hashes;
-};
-
-// A struct useful to trim a layer and update its last hash if necessary
-template<typename C>
-struct LayerReduction final
-{
-    uint64_t          new_total_parents{0};
-    bool              update_existing_last_hash;
-    typename C::Point new_last_hash;
 };
 
 // Useful metadata for growing a layer
@@ -92,40 +83,6 @@ struct GrowLayerInstructions final
     std::size_t start_offset;
     // The parent's starting index in the layer
     uint64_t next_parent_start_index;
-};
-
-// Useful metadata for trimming a layer
-struct TrimLayerInstructions final
-{
-    // The max chunk width of children used to hash into a parent
-    std::size_t parent_chunk_width;
-
-    // Total children refers to the total number of elements in a layer
-    uint64_t old_total_children;
-    uint64_t new_total_children;
-
-    // Total parents refers to the total number of hashes of chunks of children
-    uint64_t old_total_parents;
-    uint64_t new_total_parents;
-
-    // True if the new last chunk's existing parent hash will need to be updated
-    bool update_existing_last_hash;
-
-    // Whether we need to explicitly trim children from the new last chunk
-    bool need_last_chunk_children_to_trim;
-    // Whether we need to trim by growing using the remaining children from the new last chunk
-    bool need_last_chunk_remaining_children;
-    // Whether we need the new last chunk's existing parent hash in order to complete the trim
-    bool need_existing_last_hash;
-    // Whether we need the new last child from the new last chunk in order to complete the trim
-    bool need_new_last_child;
-
-    // The offset to use when hashing the last chunk
-    std::size_t hash_offset;
-
-    // The starting and ending indexes of the children we're going to need to trim the last chunk
-    uint64_t start_trim_idx;
-    uint64_t end_trim_idx;
 };
 
 // Output pub key and commitment, ready to be converted to a leaf tuple
@@ -190,7 +147,7 @@ struct OutputContext final
 static_assert(sizeof(OutputPair)    == (32+32),   "db expects 64 bytes for output pairs");
 static_assert(sizeof(OutputContext) == (8+32+32), "db expects 72 bytes for output context");
 
-using OutputsByLastLockedBlock = std::unordered_map<uint64_t, std::vector<OutputContext>>;
+using OutsByLastLockedBlock = std::unordered_map<uint64_t, std::vector<OutputContext>>;
 
 // Ed25519 points (can go from OutputTuple -> LeafTuple)
 struct OutputTuple final
@@ -198,6 +155,8 @@ struct OutputTuple final
     rct::key O;
     rct::key I;
     rct::key C;
+
+    const OutputBytes to_output_bytes() const { return OutputBytes { O.bytes, I.bytes, C.bytes }; }
 };
 
 // Struct composed of ec elems needed to get a full-fledged leaf tuple
@@ -303,17 +262,6 @@ public:
         std::vector<LayerExtension<C2>> c2_layer_extensions;
     };
 
-    // A struct useful to reduce the number of leaves in an existing tree
-    // - layers alternate between C1 and C2
-    // - c1_layer_reductions[0] is first layer after leaves, then c2_layer_reductions[0], c1_layer_reductions[1], etc
-    struct TreeReduction final
-    {
-        uint64_t                        new_total_leaf_tuples{0};
-        std::vector<LayerReduction<C1>> c1_layer_reductions;
-        std::vector<LayerReduction<C2>> c2_layer_reductions;
-        // TODO: enums for how it should be used {0: Normal trim, 1: Trim to empty, 2: Don't trim at all}
-    };
-
     // Last hashes from each layer in the tree
     // - layers alternate between C1 and C2
     // - c1_last_hashes[0] refers to the layer after leaves, then c2_last_hashes[0], then c1_last_hashes[1], etc
@@ -321,15 +269,6 @@ public:
     {
         std::vector<typename C1::Point> c1_last_hashes;
         std::vector<typename C2::Point> c2_last_hashes;
-    };
-
-    // The children we'll trim from each last chunk in the tree
-    // - layers alternate between C1 and C2
-    // - c1_children[0] refers to the layer after leaves, then c2_children[0], then c1_children[1], etc
-    struct LastChunkChildrenForTrim final
-    {
-        std::vector<std::vector<typename C1::Scalar>> c1_children;
-        std::vector<std::vector<typename C2::Scalar>> c2_children;
     };
 
     // A path in the tree containing whole chunks at each layer
@@ -344,6 +283,7 @@ public:
     struct Path final
     {
         std::vector<OutputTuple> leaves;
+        // TODO: std::size_t idx_in_leaves;
         std::vector<std::vector<typename C1::Point>> c1_layers;
         std::vector<std::vector<typename C2::Point>> c2_layers;
 
@@ -357,6 +297,14 @@ public:
         bool empty() { return leaves.empty() && c1_layers.empty() && c2_layers.empty(); }
     };
 
+    // A path ready to be used to construct an FCMP++ proof
+    struct PathForProof final
+    {
+        std::vector<fcmp_pp::OutputBytes> leaves;
+        std::size_t output_idx;
+        std::vector<std::vector<typename C2::Scalar>> c2_scalar_chunks;
+        std::vector<std::vector<typename C1::Scalar>> c1_scalar_chunks;
+    };
 //member functions
 public:
     // Convert output pairs into leaf tuples, from {output pubkey,commitment} -> {O,C} -> {O.x,I.x,C.x}
@@ -371,24 +319,8 @@ public:
         const LastHashes &existing_last_hashes,
         std::vector<std::vector<OutputContext>> &&new_outputs);
 
-    // Get instructions useful for trimming all existing layers in the tree
-    // - always_regrow_with_remaining will use hash_grow with remaining elems left in a chunk to "trim" every chunk,
-    //   rather than trim using the elems in the chunk to be removed. This is useful when we don't have all elems from a
-    //   chunk saved and therefore cannot use hash_trim with the elems we're going to trim, as is the case with the
-    //   pruned tree sync implementation.
-    // - empty response means empty the tree
-    std::vector<TrimLayerInstructions> get_trim_instructions(
-        const uint64_t old_n_leaf_tuples,
-        const uint64_t trim_n_leaf_tuples,
-        const bool always_regrow_with_remaining = false) const;
-
-    // Take in the instructions useful for trimming all existing layers in the tree, all children used to trim each
-    // last chunk, and the existing last hash in what will become the new last parent of each layer, and return a
-    // tree reduction struct that can be used to trim a tree
-    TreeReduction get_tree_reduction(
-        const std::vector<TrimLayerInstructions> &trim_instructions,
-        const LastChunkChildrenForTrim &children_for_trim,
-        const LastHashes &last_hashes) const;
+    // Calculate the number of elems in each layer of the tree based on the number of leaf tuples
+    std::vector<uint64_t> n_elems_per_layer(const uint64_t n_leaf_tuples) const;
 
     // Calculate how many layers in the tree there are based on the number of leaf tuples
     std::size_t n_layers(const uint64_t n_leaf_tuples) const;
@@ -397,10 +329,20 @@ public:
     // - Returns empty path indexes if leaf is not in the tree (if n_leaf_tuples <= leaf_tuple_idx)
     PathIndexes get_path_indexes(const uint64_t n_leaf_tuples, const uint64_t leaf_tuple_idx) const;
 
+    // Get child chunk indexes for the provided leaf tuple
+    // - Returns empty if leaf is not in the tree (if n_leaf_tuples <= leaf_tuple_idx)
+    std::vector<uint64_t> get_child_chunk_indexes(const uint64_t n_leaf_tuples, const uint64_t leaf_tuple_idx) const;
+
+    LastHashes tree_edge_to_last_hashes(const std::vector<crypto::ec_point> &tree_edge_to_last_hashes) const;
+
     // Audit the provided path
     bool audit_path(const Path &path, const OutputPair &output, const uint64_t n_leaf_tuples_in_tree) const;
 
-    LastChunkChildrenForTrim last_chunk_children_from_path_bytes(const PathBytes &path_bytes) const;
+    uint8_t *get_tree_root_from_bytes(const std::size_t n_layers, const crypto::ec_point &tree_root) const;
+
+    PathForProof path_for_proof(const Path &path, const OutputTuple &output_tuple) const;
+
+    std::vector<crypto::ec_point> calc_hashes_from_path(const Path &path, const bool replace_last_hash = false) const;
 private:
     // Multithreaded helper function to convert outputs to leaf tuples and set leaves on tree extension
     void set_valid_leaves(
@@ -461,25 +403,3 @@ std::shared_ptr<CurveTreesV1> curve_trees_v1(
 //----------------------------------------------------------------------------------------------------------------------
 } //namespace curve_trees
 } //namespace fcmp_pp
-
-namespace rct
-{
-namespace fcmp_pp
-{
-// Legacy compatibility aliases used by ringct/wallet/db integration while FCMP++
-// migration is in progress.
-struct output_tuple final
-{
-  rct::key O;
-  rct::key I;
-  rct::key C;
-};
-
-using curve_tree = std::vector<output_tuple>;
-
-rct::key compute_root(const curve_tree &tree);
-void grow_tree(curve_tree &tree, const std::vector<output_tuple> &new_leaves);
-void trim_tree(curve_tree &tree, std::size_t leaves_to_remove);
-std::vector<rct::key> merkle_path(const curve_tree &tree, std::size_t leaf_index);
-} // namespace fcmp_pp
-} // namespace rct

@@ -241,6 +241,8 @@ namespace cryptonote
     tx.extra = extra;
     crypto::public_key txkey_pub;
 
+    const bool is_fcmp_pp = rct && (rct_config.bp_version == 0 || rct_config.bp_version >= 5);
+
     // if we have a stealth payment id, find it and encrypt it with the tx key now
     std::vector<tx_extra_field> tx_extra_fields;
     if (parse_tx_extra(tx.extra, tx_extra_fields))

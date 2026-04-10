@@ -29,8 +29,11 @@
 set(fcmp_pp_sources
   curve_trees.cpp
   fcmp_pp_crypto.cpp
+  proof_len.cpp
+  prove.cpp
   tower_cycle.cpp
-  tree_cache.cpp)
+  tree_cache.cpp
+  tx_utils.cpp)
 
 monero_find_all_headers(fcmp_pp_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -59,3 +62,15 @@ target_link_libraries(fcmp_pp
     ${CMAKE_CURRENT_BINARY_DIR}/fcmp_pp_rust/libfcmp_pp_rust.a
     ${EXTRA_LIBRARIES}
     ${EXTRA_RUST_LIBRARIES})
+
+# Try compiling C file ffi_api_c_compat.c which includes fcmp++.h, and throw an error if C compilation fails
+try_compile(FFI_API_C_COMPAT_RES
+  "${CMAKE_CURRENT_BINARY_DIR}/fcmp_ffi_c"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ffi_api_c_compat.c"
+  CMAKE_FLAGS -DCMAKE_C_STANDARD=11
+  COMPILE_DEFINITIONS -I"${CMAKE_CURRENT_SOURCE_DIR}/fcmp_pp_rust"
+  OUTPUT_VARIABLE FFI_API_C_COMPAT_OUTPUT)
+if(NOT FFI_API_C_COMPAT_RES)
+  message(SEND_ERROR "Error compiling ffi_api_c_compat.c: ${FFI_API_C_COMPAT_OUTPUT}")
+  message(FATAL_ERROR "The FCMP++ FFI API header 'fcmp++.h' has broken compatibility with C")
+endif()

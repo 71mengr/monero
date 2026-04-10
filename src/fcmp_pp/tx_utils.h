@@ -1,21 +1,21 @@
 // Copyright (c) 2024, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -28,34 +28,21 @@
 
 #pragma once
 
-extern "C"
-{
-#include "crypto/crypto-ops.h"
-}
-#include "ringct/rctTypes.h"
+#include <memory>
+
+#include "curve_trees.h"
+#include "prove.h"
+#include "tree_cache.h"
 
 namespace fcmp_pp
 {
 //----------------------------------------------------------------------------------------------------------------------
-// Field elems needed to get wei x coord
-struct EdYDerivatives final
-{
-    fe one_plus_y;
-    fe one_minus_y;
-};
 //----------------------------------------------------------------------------------------------------------------------
-// TODO: tests for these functions
-bool sqrt(fe y, const fe x);
-bool mul8_is_identity(const ge_p3 &point);
-bool torsion_check_vartime(const ge_p3 &point);
-rct::key clear_torsion(const ge_p3 &point);
-bool point_to_ed_y_derivatives(const rct::key &pub, EdYDerivatives &ed_y_derivatives);
-void ed_y_derivatives_to_wei_x(const EdYDerivatives &ed_y_derivatives, rct::key &wei_x);
-bool point_to_wei_x(const rct::key &pub, rct::key &wei_x);
-/**
- * brief - scalarmult_and_add - Q = P + a * A
- */
-void scalarmult_and_add(unsigned char *Q, const ge_p3 &P, const unsigned char *a, const ge_p3 &A);
+bool set_fcmp_pp_proof_input(const curve_trees::OutputPair &output_pair,
+    const curve_trees::TreeCacheV1 &tree_cache,
+    const FcmpRerandomizedOutputCompressed &randomized_output,
+    const std::shared_ptr<curve_trees::CurveTreesV1> &curve_trees,
+    ProofInput &proof_input_out);
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 }//namespace fcmp_pp

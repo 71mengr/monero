@@ -39,9 +39,12 @@ set(unit_tests_sources
   bulletproofs_plus.cpp
   canonical_amounts.cpp
   carrot_core.cpp
+  carrot_fcmp.cpp
+  carrot_impl.cpp
   carrot_legacy.cpp
   carrot_mock_helpers.cpp
   carrot_transcript_fixed.cpp
+  carrot_tx_builder.cpp
   chacha.cpp
   checkpoints.cpp
   command_line.cpp
@@ -104,7 +107,9 @@ set(unit_tests_sources
   output_selection.cpp
   vercmp.cpp
   ringdb.cpp
+  wallet_scanning.cpp
   wallet_storage.cpp
+  wallet_tx_builder.cpp
   wipeable_string.cpp
   is_hdd.cpp
   aligned.cpp
@@ -122,6 +127,7 @@ target_link_libraries(unit_tests
   PRIVATE
     ringct
     carrot_core
+    carrot_impl
     cryptonote_protocol
     cryptonote_core
     daemon_messages

@@ -1,21 +1,21 @@
 // Copyright (c) 2024, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -26,36 +26,32 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma once
+#include "proof_len.h"
 
-extern "C"
-{
-#include "crypto/crypto-ops.h"
-}
-#include "ringct/rctTypes.h"
+#include "fcmp_pp_rust/fcmp++.h"
+#include "misc_log_ex.h"
 
 namespace fcmp_pp
 {
 //----------------------------------------------------------------------------------------------------------------------
-// Field elems needed to get wei x coord
-struct EdYDerivatives final
+std::size_t fcmp_proof_len(const std::size_t n_inputs, const uint8_t n_layers)
 {
-    fe one_plus_y;
-    fe one_minus_y;
+    CHECK_AND_ASSERT_THROW_MES(n_inputs > 0, "n_inputs must be >0");
+    CHECK_AND_ASSERT_THROW_MES(n_layers > 0, "n_layers must be >0");
+    CHECK_AND_ASSERT_THROW_MES(n_inputs <= FCMP_PLUS_PLUS_MAX_INPUTS, "n_inputs must be <= FCMP_PLUS_PLUS_MAX_INPUTS");
+
+    static_assert(sizeof(uint32_t) * FCMP_PLUS_PLUS_MAX_INPUTS * std::numeric_limits<uint8_t>::max() ==
+        sizeof(PROOF_LEN_TABLE), "unexpected table size");
+
+    // This will break platforms with < 32-bit word size. One solution is to use uint32_t for the proof len everywhere
+    static_assert(sizeof(std::size_t) >= sizeof(uint32_t), "cannot cast uint32_t to size_t");
+    return (std::size_t) PROOF_LEN_TABLE[n_inputs-1][n_layers-1];
 };
-//----------------------------------------------------------------------------------------------------------------------
-// TODO: tests for these functions
-bool sqrt(fe y, const fe x);
-bool mul8_is_identity(const ge_p3 &point);
-bool torsion_check_vartime(const ge_p3 &point);
-rct::key clear_torsion(const ge_p3 &point);
-bool point_to_ed_y_derivatives(const rct::key &pub, EdYDerivatives &ed_y_derivatives);
-void ed_y_derivatives_to_wei_x(const EdYDerivatives &ed_y_derivatives, rct::key &wei_x);
-bool point_to_wei_x(const rct::key &pub, rct::key &wei_x);
-/**
- * brief - scalarmult_and_add - Q = P + a * A
- */
-void scalarmult_and_add(unsigned char *Q, const ge_p3 &P, const unsigned char *a, const ge_p3 &A);
-//----------------------------------------------------------------------------------------------------------------------
+
+std::size_t fcmp_pp_proof_len(const std::size_t n_inputs, const uint8_t n_layers)
+{
+    const std::size_t membership_proof_len = fcmp_proof_len(n_inputs, n_layers);
+    return membership_proof_len + (n_inputs * (FCMP_PP_INPUT_TUPLE_SIZE_V1 + FCMP_PP_SAL_PROOF_SIZE_V1));
+};
 //----------------------------------------------------------------------------------------------------------------------
 }//namespace fcmp_pp

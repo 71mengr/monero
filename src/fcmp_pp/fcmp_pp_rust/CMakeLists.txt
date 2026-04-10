@@ -26,7 +26,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if(ARCH_ID MATCHES "x86-64")
+if(ARCH_ID MATCHES "x86-64" OR ARCH_ID MATCHES "amd64")
   set(RUST_ARCH "x86_64")
 elseif(ARCH_ID MATCHES "(arm64|armv8a|armv8-a)")
   set(RUST_ARCH "aarch64")
@@ -85,19 +85,11 @@ endif()
 
 set(RUST_TARGET "${RUST_ARCH}-${RUST_PLATFORM}${RUST_TOOLCHAIN}")
 
-find_program(CARGO_EXECUTABLE cargo)
-if(NOT CARGO_EXECUTABLE)
-  message(FATAL_ERROR
-    "Cargo was not found in PATH, but building FCMP++ requires Rust tooling. "
-    "Install Rust/Cargo (https://rustup.rs/) and ensure `cargo` is available, "
-    "then re-run CMake.")
-endif()
-
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CARGO_CMD ${CARGO_EXECUTABLE} build --target "${RUST_TARGET}")
+  set(CARGO_CMD cargo build --target "${RUST_TARGET}")
   set(TARGET_DIR "debug")
 else ()
-  set(CARGO_CMD ${CARGO_EXECUTABLE} build --target "${RUST_TARGET}" --release)
+  set(CARGO_CMD cargo build --target "${RUST_TARGET}" --release)
   set(TARGET_DIR "release")
 endif ()
 
@@ -115,7 +107,7 @@ add_custom_command(
   COMMENT "Building fcmp++ rust lib"
   OUTPUT ${FCMP_PP_RUST_HEADER}
   OUTPUT ${FCMP_PP_RUST_LIB}
-  COMMAND CARGO_TARGET_DIR=${CMAKE_CURRENT_BINARY_DIR} ${CARGO_CMD}
+  COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${CMAKE_CURRENT_BINARY_DIR} ${CARGO_CMD}
   COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/fcmp++.h ${FCMP_PP_RUST_HEADER}
   COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/${RUST_TARGET}/${TARGET_DIR}/libfcmp_pp_rust.a ${FCMP_PP_RUST_LIB}
   COMMAND echo "Finished copying fcmp++ rust targets"

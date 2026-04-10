@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2024, The Monero Project
+# Copyright (c) 2024, The Monero Project
 #
 # All rights reserved.
 #
@@ -26,52 +26,31 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set(ringct_basic_sources
-  rctOps.cpp
-  rctTypes.cpp
-  rctCryptoOps.c
-  multiexp.cc
-  bulletproofs.cc
-  bulletproofs_plus.cc)
-
-monero_find_all_headers(ringct_basic_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
-
-monero_private_headers(ringct_basic
-  ${crypto_private_headers})
-monero_add_library(ringct_basic
-  ${ringct_basic_sources}
-  ${ringct_basic_private_headers})
-target_link_libraries(ringct_basic
-  PUBLIC
-    common
-    cncrypto
-    fcmp_pp # for fcmp_pp::fcmp_pp_proof_len
-  PRIVATE
-    ${OPENSSL_LIBRARIES}
-    ${EXTRA_LIBRARIES})
-
-set(ringct_sources
-  rctSigs.cpp
+set(carrot_impl_sources
+  address_device_ram_borrowed.cpp
+  address_utils_compat.cpp
+  carrot_tx_builder_inputs.cpp
+  carrot_tx_builder_utils.cpp
+  carrot_tx_format_utils.cpp
+  input_selection.cpp
 )
 
-set(ringct_headers)
+monero_find_all_headers(carrot_impl_headers, "${CMAKE_CURRENT_SOURCE_DIR}")
 
-set(ringct_private_headers
-  rctSigs.h
-)
+monero_add_library(carrot_impl
+  ${carrot_impl_sources}
+  ${carrot_impl_headers})
 
-monero_private_headers(ringct
-  ${crypto_private_headers})
-monero_add_library(ringct
-  ${ringct_sources}
-  ${ringct_headers}
-  ${ringct_private_headers})
-target_link_libraries(ringct
+target_link_libraries(carrot_impl
   PUBLIC
-    common
-    cncrypto
-    device
+    carrot_core
+    cryptonote_basic
     fcmp_pp
   PRIVATE
-    ${OPENSSL_LIBRARIES}
     ${EXTRA_LIBRARIES})
+
+target_include_directories(carrot_impl
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+  PRIVATE
+    ${Boost_INCLUDE_DIRS})

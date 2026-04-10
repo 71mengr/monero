@@ -45,7 +45,8 @@ extern "C" {
 }
 #include "crypto/generic-ops.h"
 #include "crypto/crypto.h"
-#include "fcmp_pp/proof.h"
+#include "fcmp_pp/fcmp_pp_types.h"
+#include "fcmp_pp/proof_len.h"
 #include "hex.h"
 #include "span.h"
 #include "memwipe.h"
@@ -306,7 +307,7 @@ namespace rct {
       RCTTypeBulletproofPlus = 6,
       RCTTypeFcmpPlusPlus = 7,
     };
-    enum RangeProofType { RangeProofBorromean, RangeProofBulletproof, RangeProofMultiOutputBulletproof, RangeProofPaddedBulletproof };
+    enum RangeProofType { RangeProofBorromean, RangeProofPaddedBulletproof };
     struct RCTConfig {
       RangeProofType range_proof_type;
       int bp_version;
@@ -326,10 +327,9 @@ namespace rct {
         std::vector<ecdhTuple> ecdhInfo;
         ctkeyV outPk;
         xmr_amount txnFee; // contains b
-        crypto::hash referenceBlock; // block containing the merkle tree root used for fcmp++
 
         rctSigBase() :
-          type(RCTTypeNull), message{}, mixRing{}, pseudoOuts{}, ecdhInfo{}, outPk{}, txnFee(0), referenceBlock{}
+          type(RCTTypeNull), message{}, mixRing{}, pseudoOuts{}, ecdhInfo{}, outPk{}, txnFee(0)
         {}
 
         template<bool W, template <bool> class Archive>
@@ -403,8 +403,6 @@ namespace rct {
               ar.delimit_array();
           }
           ar.end_array();
-          if (type == RCTTypeFcmpPlusPlus)
-            FIELD(referenceBlock)
           return ar.good();
         }
 
@@ -416,7 +414,6 @@ namespace rct {
           FIELD(ecdhInfo)
           FIELD(outPk)
           VARINT_FIELD(txnFee)
-          FIELD(referenceBlock)
         END_SERIALIZE()
     };
     struct rctSigPrunable {
@@ -426,8 +423,11 @@ namespace rct {
         std::vector<mgSig> MGs; // simple rct has N, full has 1
         std::vector<clsag> CLSAGs;
         keyV pseudoOuts; //C - for simple rct
-        uint8_t curve_trees_tree_depth; // for fcmp++
-        fcmp_pp::FcmpPpProof fcmp_pp;
+        // FCMP data
+        uint64_t reference_block{0}; // used to get the tree root as of when this reference block index enters the chain
+        uint8_t n_tree_layers{0}; // number of layers in the tree as of the block when the reference block index enters the chain
+        fcmp_pp::FcmpPpProof fcmp_pp; // FCMP++ SAL and membership proof
+        fcmp_pp::FcmpVerifyHelperData fcmp_ver_helper_data; // used to verify FCMP proofs (not serialized, reconstructed)
 
         // when changing this function, update cryptonote::get_pruned_transaction_weight
         template<bool W, template <bool> class Archive>
@@ -502,10 +502,18 @@ namespace rct {
 
           if (type == RCTTypeFcmpPlusPlus)
           {
-            FIELD(curve_trees_tree_depth)
+            VARINT_FIELD(reference_block)
+            // n_tree_layers can be inferred from the reference_block, however, if we didn't save n_tree_layers on the
+            // tx, we would need a db read (for n_tree_layers as of the block) in order to de-serialize the FCMP++ proof
+            VARINT_FIELD(n_tree_layers)
             ar.tag("fcmp_pp");
-            ar.begin_object();
-            const std::size_t proof_len = fcmp_pp::proof_len(inputs, curve_trees_tree_depth);
+            if (inputs == 0)
+              return false;
+            if (inputs > FCMP_PLUS_PLUS_MAX_INPUTS)
+              return false;
+            if (n_tree_layers == 0)
+              return false;
+            const std::size_t proof_len = fcmp_pp::fcmp_pp_proof_len(inputs, n_tree_layers);
             if (!typename Archive<W>::is_saving())
               fcmp_pp.resize(proof_len);
             if (fcmp_pp.size() != proof_len)
@@ -513,7 +521,6 @@ namespace rct {
             ar.serialize_blob(fcmp_pp.data(), proof_len);
             if (!ar.good())
               return false;
-            ar.end_object();
           }
           else if (type == RCTTypeCLSAG || type == RCTTypeBulletproofPlus)
           {
@@ -630,7 +637,8 @@ namespace rct {
           FIELD(bulletproofs_plus)
           FIELD(MGs)
           FIELD(CLSAGs)
-          FIELD(curve_trees_tree_depth)
+          VARINT_FIELD(reference_block)
+          VARINT_FIELD(n_tree_layers)
           FIELD(fcmp_pp)
           FIELD(pseudoOuts)
         END_SERIALIZE()
@@ -760,6 +768,8 @@ namespace rct {
     bool is_rct_bulletproof_plus(int type);
     bool is_rct_borromean(int type);
     bool is_rct_clsag(int type);
+    bool is_rct_short_amount(int type);
+    bool is_rct_fcmp(int type);
 
     static inline const rct::key &pk2rct(const crypto::public_key &pk) { return (const rct::key&)pk; }
     static inline const rct::key &sk2rct(const crypto::secret_key &sk) { return (const rct::key&)sk; }
@@ -770,6 +780,7 @@ namespace rct {
     static inline const crypto::secret_key &rct2sk(const rct::key &k) { return (const crypto::secret_key&)k; }
     static inline const crypto::key_image &rct2ki(const rct::key &k) { return (const crypto::key_image&)k; }
     static inline const crypto::hash &rct2hash(const rct::key &k) { return (const crypto::hash&)k; }
+    static inline const crypto::ec_point &rct2pt(const rct::key &k) { return (const crypto::ec_point&)k; }
     static inline bool operator==(const rct::key &k0, const crypto::public_key &k1) { return !crypto_verify_32(k0.bytes, (const unsigned char*)&k1); }
     static inline bool operator!=(const rct::key &k0, const crypto::public_key &k1) { return crypto_verify_32(k0.bytes, (const unsigned char*)&k1); }
 }

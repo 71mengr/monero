@@ -1,4 +1,4 @@
-// Copyright (c) 2024, The Monero Project
+// Copyright (c) 2025, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,34 +28,39 @@
 
 #pragma once
 
-extern "C"
-{
-#include "crypto/crypto-ops.h"
-}
-#include "ringct/rctTypes.h"
+//local headers
+#include "address_device.h"
+#include "carrot_core/device_ram_borrowed.h"
 
-namespace fcmp_pp
+//third party headers
+
+//standard headers
+
+//forward declarations
+
+namespace carrot
 {
-//----------------------------------------------------------------------------------------------------------------------
-// Field elems needed to get wei x coord
-struct EdYDerivatives final
+struct cryptonote_hierarchy_address_device_ram_borrowed:
+    public cryptonote_hierarchy_address_device,
+    public view_incoming_key_ram_borrowed_device
 {
-    fe one_plus_y;
-    fe one_minus_y;
+    cryptonote_hierarchy_address_device_ram_borrowed(
+        const crypto::public_key &cryptonote_account_spend_pubkey,
+        const crypto::secret_key &k_view_incoming):
+        view_incoming_key_ram_borrowed_device(k_view_incoming),
+        m_cryptonote_account_spend_pubkey(cryptonote_account_spend_pubkey)
+    {}
+
+    crypto::public_key get_cryptonote_account_spend_pubkey() const override
+    {
+        return m_cryptonote_account_spend_pubkey;
+    }
+
+    void make_legacy_subaddress_extension(const std::uint32_t major_index,
+        const std::uint32_t minor_index,
+        crypto::secret_key &legacy_subaddress_extension_out) const override;
+
+protected:
+    const crypto::public_key &m_cryptonote_account_spend_pubkey;
 };
-//----------------------------------------------------------------------------------------------------------------------
-// TODO: tests for these functions
-bool sqrt(fe y, const fe x);
-bool mul8_is_identity(const ge_p3 &point);
-bool torsion_check_vartime(const ge_p3 &point);
-rct::key clear_torsion(const ge_p3 &point);
-bool point_to_ed_y_derivatives(const rct::key &pub, EdYDerivatives &ed_y_derivatives);
-void ed_y_derivatives_to_wei_x(const EdYDerivatives &ed_y_derivatives, rct::key &wei_x);
-bool point_to_wei_x(const rct::key &pub, rct::key &wei_x);
-/**
- * brief - scalarmult_and_add - Q = P + a * A
- */
-void scalarmult_and_add(unsigned char *Q, const ge_p3 &P, const unsigned char *a, const ge_p3 &A);
-//----------------------------------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------------------------------
-}//namespace fcmp_pp
+} //namespace carrot

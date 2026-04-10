@@ -25,37 +25,37 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// 
+// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
 
-extern "C"
-{
-#include "crypto/crypto-ops.h"
-}
-#include "ringct/rctTypes.h"
+//local headers
+#include "carrot_core/core_types.h"
 
-namespace fcmp_pp
+//third party headers
+#include <boost/serialization/utility.hpp>
+
+//standard headers
+
+//forward declarations
+
+namespace boost
 {
-//----------------------------------------------------------------------------------------------------------------------
-// Field elems needed to get wei x coord
-struct EdYDerivatives final
+namespace serialization
 {
-    fe one_plus_y;
-    fe one_minus_y;
-};
-//----------------------------------------------------------------------------------------------------------------------
-// TODO: tests for these functions
-bool sqrt(fe y, const fe x);
-bool mul8_is_identity(const ge_p3 &point);
-bool torsion_check_vartime(const ge_p3 &point);
-rct::key clear_torsion(const ge_p3 &point);
-bool point_to_ed_y_derivatives(const rct::key &pub, EdYDerivatives &ed_y_derivatives);
-void ed_y_derivatives_to_wei_x(const EdYDerivatives &ed_y_derivatives, rct::key &wei_x);
-bool point_to_wei_x(const rct::key &pub, rct::key &wei_x);
-/**
- * brief - scalarmult_and_add - Q = P + a * A
- */
-void scalarmult_and_add(unsigned char *Q, const ge_p3 &P, const unsigned char *a, const ge_p3 &A);
-//----------------------------------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------------------------------
-}//namespace fcmp_pp
+//---------------------------------------------------
+template <class Archive>
+inline void serialize(Archive &a, carrot::view_tag_t &x, const boost::serialization::version_type ver)
+{
+    a & x.bytes;
+}
+//---------------------------------------------------
+template <class Archive>
+inline void serialize(Archive &a, carrot::encrypted_janus_anchor_t &x, const boost::serialization::version_type ver)
+{
+    a & x.bytes;
+}
+//---------------------------------------------------
+} //namespace serialization
+} //namespace boot

@@ -54,7 +54,11 @@ namespace cryptonote
       KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_view_secret_key)
       KV_SERIALIZE_CONTAINER_POD_AS_BLOB(m_multisig_keys)
       KV_SERIALIZE_OPT(m_is_carrot, false)
-      KV_SERIALIZE_VAL_POD_AS_BLOB_OPT(m_carrot_forward_secret, crypto::null_skey)
+      do {
+        bool ret = KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE_N(m_carrot_forward_secret, "m_carrot_forward_secret")
+        if (!ret)
+          epee::serialize_default(this_ref.m_carrot_forward_secret, crypto::null_skey);
+      } while(0);
       const crypto::chacha_iv default_iv{{0, 0, 0, 0, 0, 0, 0, 0}};
       KV_SERIALIZE_VAL_POD_AS_BLOB_OPT(m_encryption_iv, default_iv)
     END_KV_SERIALIZE_MAP()

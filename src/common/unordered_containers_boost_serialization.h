@@ -141,3 +141,25 @@ namespace boost
     }
   }
 }
+
+#include "serialization/containers.h"
+
+namespace boost
+{
+  namespace serialization
+  {
+    template <class Archive, class h_key, class hval>
+    inline void serialize(Archive &a, serializable_unordered_map<h_key, hval> &x, const boost::serialization::version_type ver)
+    {
+      std::unordered_map<h_key, hval> &base = x;
+      boost::serialization::serialize(a, base, ver);
+    }
+
+    template <class Archive, class h_key, class hval>
+    inline void serialize(Archive &a, serializable_unordered_multimap<h_key, hval> &x, const boost::serialization::version_type ver)
+    {
+      std::unordered_multimap<h_key, hval> &base = x;
+      boost::serialization::serialize(a, base, ver);
+    }
+  }
+}

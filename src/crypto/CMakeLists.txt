@@ -77,6 +77,10 @@ target_link_libraries(cncrypto
   PRIVATE
     ${EXTRA_LIBRARIES})
 
+target_include_directories(cncrypto
+  PRIVATE
+    ${MX25519_INCLUDE})
+
 if (ARM)
   option(NO_OPTIMIZED_MULTIPLY_ON_ARM
 	   "Compute multiply using generic C implementation instead of ARM ASM" OFF)

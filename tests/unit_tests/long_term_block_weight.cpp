@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022, The Monero Project
+// Copyright (c) 2019-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -58,7 +58,7 @@ public:
                         , const uint64_t& coins_generated
                         , uint64_t num_rct_outs
                         , const crypto::hash& blk_hash
-                        , const fcmp_pp::curve_trees::OutputsByLastLockedBlock& outs_by_last_locked_block
+                        , const fcmp_pp::curve_trees::OutsByLastLockedBlock& outs_by_last_locked_block
                         , const std::unordered_map<uint64_t/*output_id*/, uint64_t/*last locked block_id*/>& timelocked_outputs
                         ) override {
     blocks.push_back({block_weight, long_term_block_weight});
@@ -108,16 +108,9 @@ static uint32_t lcg()
 
 }
 
-struct BlockchainAndPool
-{
-  cryptonote::tx_memory_pool txpool;
-  cryptonote::Blockchain bc;
-  BlockchainAndPool(): txpool(bc), bc(txpool) {}
-};
-
 #define PREFIX_WINDOW(hf_version,window) \
-  BlockchainAndPool bap; \
-  cryptonote::Blockchain *bc = &bap.bc; \
+  cryptonote::BlockchainAndPool bap; \
+  cryptonote::Blockchain *bc = &bap.blockchain; \
   struct get_test_options { \
     const std::pair<uint8_t, uint64_t> hard_forks[3]; \
     const cryptonote::test_options test_options = { \

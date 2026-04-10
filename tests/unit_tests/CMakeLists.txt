@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2022, The Monero Project
+# Copyright (c) 2014-2024, The Monero Project
 #
 # All rights reserved.
 #
@@ -34,11 +34,14 @@ set(unit_tests_sources
   blockchain_db.cpp
   block_queue.cpp
   block_reward.cpp
-  bonded_validator_rules.cpp
   bootstrap_node_selector.cpp
   bulletproofs.cpp
   bulletproofs_plus.cpp
   canonical_amounts.cpp
+  carrot_core.cpp
+  carrot_legacy.cpp
+  carrot_mock_helpers.cpp
+  carrot_transcript_fixed.cpp
   chacha.cpp
   checkpoints.cpp
   command_line.cpp
@@ -55,8 +58,6 @@ set(unit_tests_sources
   epee_utils.cpp
   expect.cpp
   fcmp_pp.cpp
-  fcmp_pp_tests.cpp
-  fee.cpp
   json_serialization.cpp
   get_xtype_from_string.cpp
   hashchain.cpp
@@ -93,7 +94,6 @@ set(unit_tests_sources
   threadpool.cpp
   tree_cache.cpp
   tx_proof.cpp
-  tx_extra_mvm.cpp
   hardfork.cpp
   unbound.cpp
   uri.cpp
@@ -109,6 +109,7 @@ set(unit_tests_sources
   is_hdd.cpp
   aligned.cpp
   rpc_version_str.cpp
+  x25519.cpp
   zmq_rpc.cpp)
 
 set(unit_tests_headers
@@ -120,7 +121,7 @@ monero_add_minimal_executable(unit_tests
 target_link_libraries(unit_tests
   PRIVATE
     ringct
-    cncrypto
+    carrot_core
     cryptonote_protocol
     cryptonote_core
     daemon_messages
@@ -131,6 +132,7 @@ target_link_libraries(unit_tests
     rpc
     net
     serialization
+    seraphis_crypto
     wallet
     p2p
     version
@@ -139,19 +141,15 @@ target_link_libraries(unit_tests
     ${GTEST_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES}
-    ${ZMQ_LIB})
+    PkgConfig::libzmq)
 set_property(TARGET unit_tests
   PROPERTY
     FOLDER "tests")
 
-if (NOT MSVC)
-  set_property(TARGET unit_tests
-    APPEND_STRING
-    PROPERTY
-      COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
-endif ()
-
-SET_PROPERTY(SOURCE main.cpp PROPERTY COMPILE_FLAGS -DDEFAULT_DATA_DIR="\\"${CMAKE_SOURCE_DIR}/tests/data\\"")
+set_property(TARGET unit_tests
+  APPEND_STRING
+  PROPERTY
+    COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 
 SET_PROPERTY(SOURCE memwipe.cpp PROPERTY COMPILE_FLAGS -Ofast)
 

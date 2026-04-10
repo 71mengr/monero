@@ -152,14 +152,14 @@ TEST(tree_cache, sync_n_chunks_of_blocks)
 
     // 2. Make chunks of blocks
     std::vector<std::vector<crypto::hash>> chunks_of_block_hashes;
-    std::vector<std::vector<fcmp_pp::curve_trees::OutputsByLastLockedBlock>> chunks_of_outputs;
+    std::vector<std::vector<fcmp_pp::curve_trees::OutsByLastLockedBlock>> chunks_of_outputs;
     std::size_t leaf_count = 0;
     uint64_t last_locked_block_idx = 0;
     fcmp_pp::curve_trees::OutputPair output;
     for (std::size_t i = 0; i < N_CHUNKS; ++i)
     {
         std::vector<crypto::hash> block_hashes;
-        std::vector<fcmp_pp::curve_trees::OutputsByLastLockedBlock> outs;
+        std::vector<fcmp_pp::curve_trees::OutsByLastLockedBlock> outs;
         for (std::size_t j = 0; j < N_BLOCKS_PER_CHUNK; ++j)
         {
             auto outputs = test::generate_random_outputs(*curve_trees, leaf_count, INIT_LEAVES);
@@ -191,7 +191,7 @@ TEST(tree_cache, sync_n_chunks_of_blocks)
         fcmp_pp::curve_trees::CurveTrees<Selene, Helios>::TreeExtension tree_extension;
         std::vector<uint64_t> n_new_leaf_tuples_per_block;
 
-        tree_cache->sync_blocks(start_block_idx,
+        tree_cache->prepare_to_sync_blocks(start_block_idx,
             mock_block_hash,
             chunks_of_block_hashes[i],
             chunks_of_outputs[i],

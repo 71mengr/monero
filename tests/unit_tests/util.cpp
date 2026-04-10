@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2023, The Monero Project
+// Copyright (c) 2023-2024, The Monero Project
 //
 // All rights reserved.
 //
@@ -29,24 +29,6 @@
 #include "gtest/gtest.h"
 
 #include "common/util.h"
-#include "common/mvm.h"
-
-TEST(Web3Id, deterministic)
-{
-  ASSERT_EQ(tools::make_unique_web3_id("monero"), tools::make_unique_web3_id("monero"));
-}
-
-TEST(Web3Id, unique_for_different_inputs)
-{
-  ASSERT_NE(tools::make_unique_web3_id("monero"), tools::make_unique_web3_id("web3"));
-}
-
-TEST(Web3Id, prefixed_and_expected_size)
-{
-  const std::string web3_id = tools::make_unique_web3_id("monero-web3-seed");
-  ASSERT_TRUE(web3_id.rfind("0x", 0) == 0);
-  ASSERT_EQ(web3_id.size(), 42u);
-}
 
 TEST(LocalAddress, localhost) { ASSERT_TRUE(tools::is_local_address("localhost")); }
 TEST(LocalAddress, localhost_port) { ASSERT_TRUE(tools::is_local_address("localhost:18081")); }
@@ -66,32 +48,3 @@ TEST(LocalAddress, valid_domain) { ASSERT_FALSE(tools::is_local_address("getmone
 TEST(LocalAddress, local_prefix) { ASSERT_FALSE(tools::is_local_address("localhost.com")); }
 TEST(LocalAddress, invalid) { ASSERT_FALSE(tools::is_local_address("test")); }
 TEST(LocalAddress, empty) { ASSERT_FALSE(tools::is_local_address("")); }
-
-TEST(MvmCommon, normalize_and_derive_ids)
-{
-  std::string normalized;
-  ASSERT_TRUE(tools::normalize_mvm_bytecode_hex("0x6001600201", normalized));
-  ASSERT_EQ(normalized, "6001600201");
-
-  const std::string c1 = tools::derive_mvm_contract_id(normalized);
-  const std::string c2 = tools::derive_mvm_contract_id(normalized);
-  ASSERT_EQ(c1, c2);
-  ASSERT_TRUE(c1.rfind("mvmc_", 0) == 0);
-  ASSERT_EQ(tools::derive_mvm_code_hash(normalized).size(), 42u);
-}
-
-TEST(MvmCommon, validate_p2p_payload)
-{
-  ASSERT_TRUE(tools::validate_mvm_p2p_payload("create_contract", 1, 0, 0, "", ""));
-  ASSERT_FALSE(tools::validate_mvm_p2p_payload("create_contract", 0, 0, 0, "", ""));
-  ASSERT_FALSE(tools::validate_mvm_p2p_payload("transfer_token", 1, 0, tools::MVM_TOKEN_AMOUNT_MAX + 1, "a", "b"));
-  ASSERT_FALSE(tools::validate_mvm_p2p_payload("transfer_token", 1, 0, 1, "same", "same"));
-}
-
-TEST(MvmCommon, validate_bytecode_and_mainnet_flag)
-{
-  ASSERT_TRUE(tools::validate_mvm_bytecode_hex_program("010200000000000000ff")); // PUSH 2; HALT
-  ASSERT_FALSE(tools::validate_mvm_bytecode_hex_program("0102ff"));              // truncated PUSH
-  ASSERT_TRUE(tools::is_mvm_mainnet_enabled(cryptonote::MAINNET));
-  ASSERT_FALSE(tools::is_mvm_mainnet_enabled(cryptonote::TESTNET));
-}

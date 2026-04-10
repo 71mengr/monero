@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022, The Monero Project
+// Copyright (c) 2014-2024, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -37,6 +37,7 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
 #include "unit_tests_utils.h"
 #include <condition_variable>
+#include <thread>
 
 #define MAKE_IPV4_ADDRESS(a,b,c,d) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),0}
 #define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),e}
@@ -56,7 +57,7 @@ public:
   void set_target_blockchain_height(uint64_t) {}
   bool init(const boost::program_options::variables_map& vm) {return true ;}
   bool deinit(){return true;}
-  bool get_short_chain_history(std::list<crypto::hash>& ids, uint64_t& current_height) const { return true; }
+  bool get_short_chain_history(std::list<crypto::hash>& ids) const { return true; }
   bool have_block(const crypto::hash& id, int *where = NULL) const {return false;}
   bool have_block_unlocked(const crypto::hash& id, int *where = NULL) const {return false;}
   void get_blockchain_top(uint64_t& height, crypto::hash& top_id)const{height=0;top_id=crypto::null_hash;}
@@ -405,8 +406,8 @@ TEST(node_server, bind_same_p2p_port)
     Relevant part about REUSEADDR from man:
     https://www.man7.org/linux/man-pages/man7/ip.7.html
 
-    For Mac OSX, set the following alias, before running the test, or else it will fail:
-    sudo ifconfig lo0 alias 127.0.0.2
+    For Mac OSX and OpenBSD, set the following alias (by running the command as root), before running the test, or else it will fail:
+    ifconfig lo0 alias 127.0.0.2
     */
     vm.find(nodetool::arg_p2p_bind_ip.name)->second   = boost::program_options::variable_value(std::string("127.0.0.2"), false);
     vm.find(nodetool::arg_p2p_bind_port.name)->second = boost::program_options::variable_value(std::string(port), false);

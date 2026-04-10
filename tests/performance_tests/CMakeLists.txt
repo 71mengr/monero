@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2022, The Monero Project
+# Copyright (c) 2014-2024, The Monero Project
 #
 # All rights reserved.
 #
@@ -58,7 +58,8 @@ set(performance_tests_headers
   performance_utils.h
   single_tx_test_base.h
   torsion_ops.h
-  zero_commit.h)
+  zero_commit.h
+  view_scan.h)
 
 monero_add_minimal_executable(performance_tests
   ${performance_tests_sources}
@@ -66,12 +67,14 @@ monero_add_minimal_executable(performance_tests
 target_link_libraries(performance_tests
   PRIVATE
     wallet
+    carrot_core
     cryptonote_core
     common
     cncrypto
     epee
     fcmp_pp
     ringct
+    seraphis_crypto
     ${Boost_CHRONO_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES})

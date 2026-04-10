@@ -204,7 +204,8 @@ namespace
   const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
-  const char* USAGE_MASTERNODE_REGISTER("masternode_register <collateral_amount> <address> <amount>");
+  const char* USAGE_MASTERNODE_REGISTER("masternode_register [<collateral_amount>] <address> <amount>");
+  constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
   const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount> [<salt>]");
   const char* USAGE_MVM_MINT_TOKEN("mvm_mint_token <contract_id> <code_hash> <symbol> <to_token_address> <token_amount> <address> <amount>");
@@ -1048,7 +1049,7 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
   if (!try_connect_to_daemon())
     return false;
 
-  if (args.size() != 3)
+  if (args.size() != 2 && args.size() != 3)
   {
     fail_msg_writer() << tr("usage: ") << tr(USAGE_MASTERNODE_REGISTER);
     return true;
@@ -1066,10 +1067,22 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
     return true;
   }
 
-  uint64_t collateral_amount = 0;
-  if (!cryptonote::parse_amount(collateral_amount, args[0]) || collateral_amount == 0)
+  const bool has_explicit_collateral_amount = args.size() == 3;
+  uint64_t collateral_amount = MASTERNODE_COLLATERAL_EXACT_AMOUNT;
+  const std::string& destination_arg = args[has_explicit_collateral_amount ? 1 : 0];
+  const std::string& amount_arg = args[has_explicit_collateral_amount ? 2 : 1];
+  if (has_explicit_collateral_amount)
   {
-    fail_msg_writer() << tr("invalid collateral amount");
+    if (!cryptonote::parse_amount(collateral_amount, args[0]) || collateral_amount == 0)
+    {
+      fail_msg_writer() << tr("invalid collateral amount");
+      return true;
+    }
+  }
+
+  if (collateral_amount != MASTERNODE_COLLATERAL_EXACT_AMOUNT)
+  {
+    fail_msg_writer() << tr("collateral amount must be exactly ") << cryptonote::print_money(MASTERNODE_COLLATERAL_EXACT_AMOUNT);
     return true;
   }
 
@@ -1145,16 +1158,16 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
   }
 
   cryptonote::address_parse_info info;
-  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[1], oa_prompter))
+  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), destination_arg, oa_prompter))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
   }
 
   uint64_t amount = 0;
-  if (!cryptonote::parse_amount(amount, args[2]) || amount == 0)
+  if (!cryptonote::parse_amount(amount, amount_arg) || amount == 0)
   {
-    fail_msg_writer() << tr("amount is wrong: ") << args[2];
+    fail_msg_writer() << tr("amount is wrong: ") << amount_arg;
     return true;
   }
 

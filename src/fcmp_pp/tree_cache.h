@@ -147,16 +147,16 @@ struct AssignedLeafIdx final
     END_SERIALIZE()
 };
 
-using LockedOutputsByLastLockedBlock = std::unordered_map<LastLockedBlockIdx, std::vector<OutputContext>>;
-using LockedOutputRefs       = std::unordered_map<LastLockedBlockIdx, NumOutputs>;
-using LockedOutputsByCreated = std::unordered_map<CreatedBlockIdx, LockedOutputRefs>;
+using LockedOutputsByLastLockedBlock = serializable_unordered_map<LastLockedBlockIdx, std::vector<OutputContext>>;
+using LockedOutputRefs       = serializable_unordered_map<LastLockedBlockIdx, NumOutputs>;
+using LockedOutputsByCreated = serializable_unordered_map<CreatedBlockIdx, LockedOutputRefs>;
 
-using RegisteredOutputs = std::unordered_map<OutputRef, AssignedLeafIdx>;
-using LeafCache         = std::unordered_map<ChildChunkIdx, CachedLeafChunk>;
-using ChildChunkCache   = std::unordered_map<ChildChunkIdx, CachedTreeElemChunk>;
+using RegisteredOutputs = serializable_unordered_map<OutputRef, AssignedLeafIdx>;
+using LeafCache         = serializable_unordered_map<ChildChunkIdx, CachedLeafChunk>;
+using ChildChunkCache   = serializable_unordered_map<ChildChunkIdx, CachedTreeElemChunk>;
 
 // TODO: technically this can be a vector. There should *always* be at least 1 entry for every layer
-using TreeElemCache     = std::unordered_map<LayerIdx, ChildChunkCache>;
+using TreeElemCache     = serializable_unordered_map<LayerIdx, ChildChunkCache>;
 
 static const int TREE_CACHE_VERSION = 0;
 

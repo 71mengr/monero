@@ -1741,8 +1741,6 @@ void BlockchainLMDB::trim_block()
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
-  mdb_txn_cursors *m_cursors = &m_wcursors;
-
   const uint64_t n_blocks = this->height();
   if (n_blocks == 0)
     return;
@@ -8108,9 +8106,7 @@ template void BlockchainLMDB::grow_layer<fcmp_pp::curve_trees::Selene>(const std
 template void BlockchainLMDB::grow_layer<fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::vector<fcmp_pp::curve_trees::LayerExtension<fcmp_pp::curve_trees::Helios>> &, const uint64_t, const uint64_t);
 template void BlockchainLMDB::trim_layer<fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const fcmp_pp::curve_trees::LayerReduction<fcmp_pp::curve_trees::Selene> &, const uint64_t);
 template void BlockchainLMDB::trim_layer<fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const fcmp_pp::curve_trees::LayerReduction<fcmp_pp::curve_trees::Helios> &, const uint64_t);
-template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Selene, fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const uint64_t, const uint64_t) const;
 template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Selene, fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const uint64_t, const uint64_t) const;
 template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Helios, fcmp_pp::curve_trees::Selene>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::unique_ptr<fcmp_pp::curve_trees::Selene> &, const uint64_t, const uint64_t) const;
-template bool BlockchainLMDB::audit_layer<fcmp_pp::curve_trees::Helios, fcmp_pp::curve_trees::Helios>(const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const std::unique_ptr<fcmp_pp::curve_trees::Helios> &, const uint64_t, const uint64_t) const;
 
 }  // namespace cryptonote

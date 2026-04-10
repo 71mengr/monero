@@ -60,6 +60,7 @@ using namespace epee;
 #include "rpc/rpc_handler.h"
 #include "rpc/rpc_payment_costs.h"
 #include "rpc/rpc_payment_signature.h"
+#include "rpc/masternode_payment_list.h"
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
@@ -1070,16 +1071,9 @@ namespace cryptonote
       if (!deterministic_set.empty())
         res.next_in_line_id = deterministic_set[(res.height - 1) % deterministic_set.size()].id;
 
-      std::vector<cryptonote::tx_extra_field> tx_extra_fields;
-      if (cryptonote::parse_tx_extra(top_block.miner_tx.extra, tx_extra_fields))
-      {
-        cryptonote::tx_extra_nonce extra_nonce;
-        if (cryptonote::find_tx_extra_field_by_type(tx_extra_fields, extra_nonce) &&
-            extra_nonce.nonce.rfind("mn:", 0) == 0)
-        {
-          res.last_paid_address = extra_nonce.nonce.substr(3);
-        }
-      }
+      std::string payment_id;
+      if (cryptonote::get_masternode_payment_id_from_block(top_block, payment_id))
+        res.last_paid_address = std::move(payment_id);
     }
 
     res.status = CORE_RPC_STATUS_OK;
@@ -1135,8 +1129,56 @@ namespace cryptonote
     res.reason = bonded_tier_enabled
         ? "Bonded validator tier is enabled on mainnet at the current hard-fork version"
         : "Bonded validator tier is disabled on this network or hard-fork version";
+    if (req.id.empty())
+    {
+      res.status = "id is required";
+      return true;
+    }
+
+    cryptonote::bonded_validator_info masternode{};
+    if (!m_core.get_blockchain_storage().get_masternode(req.id, masternode))
+    {
+      res.status = "masternode id is not registered";
+      return true;
+    }
+
     res.id = req.id;
     res.total_amount = 0;
+
+    const uint64_t chain_height = m_core.get_current_blockchain_height();
+    if (chain_height == 0)
+    {
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
+    }
+
+    const uint64_t chain_top_height = chain_height - 1;
+    uint64_t from_height = req.from_height;
+    uint64_t to_height = req.to_height == 0 ? chain_top_height : req.to_height;
+
+    if (from_height > to_height)
+      std::swap(from_height, to_height);
+
+    if (from_height > chain_top_height)
+    {
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
+    }
+
+    to_height = std::min(to_height, chain_top_height);
+    from_height = std::max(from_height, masternode.registration_height);
+    if (from_height > to_height)
+    {
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
+    }
+
+    cryptonote::collect_masternode_payment_entries(
+        m_core, req.id, from_height, to_height, res.rewards, res.total_amount);
+
+    std::sort(res.rewards.begin(), res.rewards.end(),
+              [](const auto& left, const auto& right) { return left.height < right.height; });
+
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

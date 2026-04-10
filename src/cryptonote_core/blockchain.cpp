@@ -573,6 +573,7 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   // at startup, not from peer sync summaries or persisted advisory blobs.
   rebuild_masternode_state_from_chain();
   rebuild_mvm_state_from_chain();
+  MINFO("Initialized module state for masternodes, smart contracts, and tokens");
 
   // check how far behind we are
   uint64_t top_block_timestamp = m_db->get_top_block_timestamp();

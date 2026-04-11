@@ -51,7 +51,7 @@
 #include "messages/messages.pb.h"
 #include "messages/messages-common.pb.h"
 #include "messages/messages-management.pb.h"
-#include "messages/messages-uzoqam.pb.h"
+#include "messages/messages-monero.pb.h"
 
 namespace hw {
 namespace trezor {

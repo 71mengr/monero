@@ -19,6 +19,7 @@ import re
 
 MAX_TOKEN_SUPPLY = 10**18
 MAX_TOKEN_AMOUNT = 10**18
+MONERO_TXID_RE = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")
 OPCODE_TO_NAME = {
     0x01: "PUSH",
     0x02: "LOAD",
@@ -166,6 +167,7 @@ class MVM:
         elif op == "CREATE_TOKEN":
             contract_id = str(ins["contract_id"])
             symbol = str(ins["symbol"])
+            token_name = str(ins.get("name", symbol)).strip()
             decimals = int(ins.get("decimals", 18))
             total_supply = int(ins["supply"])
             owner = str(ins.get("owner", "owner"))
@@ -187,6 +189,12 @@ class MVM:
             if symbol in self.state.tokens:
                 raise MVMError(f"token '{symbol}' already exists")
             self._require_symbol(symbol)
+            if contract_id not in self.state.contracts:
+                raise MVMError(f"contract '{contract_id}' not found")
+            if not token_name or len(token_name) > 128:
+                raise MVMError("token name must be in range [1, 128] characters")
+            if deployment_txid and not MONERO_TXID_RE.fullmatch(deployment_txid):
+                raise MVMError("deployment txid must be 64 hex chars with optional 0x prefix")
             if deployment_height is not None:
                 deployment_height = int(deployment_height)
                 if deployment_height < 0:
@@ -197,7 +205,7 @@ class MVM:
                 deployment_height = current_height
             self.state.tokens[symbol] = {
                 "contract_id": contract_id,
-                "name": str(ins.get("name", symbol)),
+                "name": token_name,
                 "decimals": decimals,
                 "total_supply": total_supply,
                 "created_at_height": current_height,
@@ -230,7 +238,10 @@ class MVM:
             if token is None:
                 raise MVMError(f"token '{symbol}' not found")
             self._check_token_height_sync(token)
-            token["total_supply"] = int(token["total_supply"]) + amount
+            updated_total_supply = int(token["total_supply"]) + amount
+            if updated_total_supply > MAX_TOKEN_SUPPLY:
+                raise MVMError("mint would exceed max token supply")
+            token["total_supply"] = updated_total_supply
             balances = token["balances"]
             balances[to] = int(balances.get(to, 0)) + amount
             token["last_height"] = int(self.state.memory.get("block_height", 0))

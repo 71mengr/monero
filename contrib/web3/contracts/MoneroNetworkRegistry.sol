@@ -12,10 +12,15 @@ contract MoneroNetworkRegistry {
     error NotOwner();
     error NotWriter();
     error InvalidHexAddressLike(string value);
+    error InvalidChainIdHex(string value);
+    error InvalidNetworkId(string value);
     error InvalidNetworkName(string value);
     error EmptyString(string field);
+    error StringTooLong(string field, uint256 length, uint256 maxAllowed);
     error AlreadyExists(bytes32 key);
     error NotFound(bytes32 key);
+    error AlreadyPaused();
+    error AlreadyUnpaused();
 
     event OwnerTransferred(address indexed previousOwner, address indexed newOwner);
     event WriterSet(address indexed writer, bool enabled);
@@ -88,11 +93,13 @@ contract MoneroNetworkRegistry {
     }
 
     function pause() external onlyOwner {
+        if (paused) revert AlreadyPaused();
         paused = true;
         emit ContractPaused(msg.sender);
     }
 
     function unpause() external onlyOwner {
+        if (!paused) revert AlreadyUnpaused();
         paused = false;
         emit ContractUnpaused(msg.sender);
     }
@@ -114,10 +121,14 @@ contract MoneroNetworkRegistry {
         string calldata daemonVersion
     ) external onlyWriter whenNotPaused returns (bytes32 key) {
         _validateNetwork(network);
+        _validateChainIdHex(chainIdHex);
+        _validateNetworkId(networkId);
         _requireNonEmpty("chainIdHex", chainIdHex);
         _requireNonEmpty("networkId", networkId);
         _requireNonEmpty("daemonEndpoint", daemonEndpoint);
         _requireNonEmpty("daemonVersion", daemonVersion);
+        _enforceMaxLen("daemonEndpoint", daemonEndpoint, 512);
+        _enforceMaxLen("daemonVersion", daemonVersion, 64);
         _validateHexAddressLike(web3UniqueId);
 
         key = profileKey(network, networkId, web3UniqueId);
@@ -188,6 +199,11 @@ contract MoneroNetworkRegistry {
         if (bytes(value).length == 0) revert EmptyString(field);
     }
 
+    function _enforceMaxLen(string memory field, string calldata value, uint256 maxAllowed) private pure {
+        uint256 valueLen = bytes(value).length;
+        if (valueLen > maxAllowed) revert StringTooLong(field, valueLen, maxAllowed);
+    }
+
     function _validateNetwork(string calldata network) private pure {
         bytes32 h = keccak256(bytes(network));
         if (
@@ -213,6 +229,40 @@ contract MoneroNetworkRegistry {
             bool isUpper = c >= "A" && c <= "F";
             if (!(isNum || isLower || isUpper)) {
                 revert InvalidHexAddressLike(value);
+            }
+        }
+    }
+
+    function _validateChainIdHex(string calldata value) private pure {
+        bytes calldata b = bytes(value);
+        if (b.length < 3 || b.length > 66 || b[0] != "0" || (b[1] != "x" && b[1] != "X")) {
+            revert InvalidChainIdHex(value);
+        }
+        for (uint256 i = 2; i < b.length; i++) {
+            bytes1 c = b[i];
+            bool isNum = c >= "0" && c <= "9";
+            bool isLower = c >= "a" && c <= "f";
+            bool isUpper = c >= "A" && c <= "F";
+            if (!(isNum || isLower || isUpper)) {
+                revert InvalidChainIdHex(value);
+            }
+        }
+    }
+
+    function _validateNetworkId(string calldata value) private pure {
+        bytes calldata b = bytes(value);
+        if (b.length != 36) revert InvalidNetworkId(value);
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            bool isDash = (i == 8 || i == 13 || i == 18 || i == 23) && c == "-";
+            if (isDash) {
+                continue;
+            }
+            bool isNum = c >= "0" && c <= "9";
+            bool isLower = c >= "a" && c <= "f";
+            bool isUpper = c >= "A" && c <= "F";
+            if (!(isNum || isLower || isUpper)) {
+                revert InvalidNetworkId(value);
             }
         }
     }

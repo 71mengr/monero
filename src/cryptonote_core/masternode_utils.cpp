@@ -45,7 +45,7 @@ namespace
 constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
 constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_SECONDS = 30ULL * 24ULL * 60ULL * 60ULL;
 constexpr uint64_t MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_SECONDS / DIFFICULTY_TARGET_V2;
-constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "monero-masternode-registration-v2";
+constexpr char MASTERNODE_REGISTRATION_SIG_DOMAIN[] = "uzoqam-masternode-registration-v2";
 
 // Helper to safely add with overflow check
 template<typename T>

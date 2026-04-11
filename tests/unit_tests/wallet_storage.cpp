@@ -217,7 +217,7 @@ TEST(wallet_storage, change_password_different_file)
 
 TEST(wallet_storage, change_password_in_memory)
 {
-    const epee::wipeable_string password1("monero");
+    const epee::wipeable_string password1("uzoqam");
     const epee::wipeable_string password2("means money");
     const epee::wipeable_string password_wrong("is traceable");
 

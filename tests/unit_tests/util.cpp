@@ -33,17 +33,17 @@
 
 TEST(Web3Id, deterministic)
 {
-  ASSERT_EQ(tools::make_unique_web3_id("monero"), tools::make_unique_web3_id("monero"));
+  ASSERT_EQ(tools::make_unique_web3_id("uzoqam"), tools::make_unique_web3_id("uzoqam"));
 }
 
 TEST(Web3Id, unique_for_different_inputs)
 {
-  ASSERT_NE(tools::make_unique_web3_id("monero"), tools::make_unique_web3_id("web3"));
+  ASSERT_NE(tools::make_unique_web3_id("uzoqam"), tools::make_unique_web3_id("web3"));
 }
 
 TEST(Web3Id, prefixed_and_expected_size)
 {
-  const std::string web3_id = tools::make_unique_web3_id("monero-web3-seed");
+  const std::string web3_id = tools::make_unique_web3_id("uzoqam-web3-seed");
   ASSERT_TRUE(web3_id.rfind("0x", 0) == 0);
   ASSERT_EQ(web3_id.size(), 42u);
 }

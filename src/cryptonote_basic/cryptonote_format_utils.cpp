@@ -1251,7 +1251,7 @@ namespace cryptonote
     switch (decimal_point)
     {
       case 12:
-        return "monero";
+        return "uzoqam";
       case 9:
         return "millinero";
       case 6:

@@ -1048,6 +1048,28 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
   CHECK_IF_BACKGROUND_SYNCING("cannot register masternode");
   if (!try_connect_to_daemon())
     return false;
+  if (!m_wallet->is_synced())
+  {
+    fail_msg_writer() << tr("wallet is not synced; please wait for refresh to complete before registering a masternode");
+    return true;
+  }
+
+  COMMAND_RPC_GET_INFO::request info_req{};
+  COMMAND_RPC_GET_INFO::response info_res{};
+  const bool info_ok = m_wallet->invoke_http_json("/get_info", info_req, info_res);
+  const std::string info_err = interpret_rpc_response(info_ok, info_res.status);
+  if (!info_ok || !info_err.empty())
+  {
+    fail_msg_writer() << tr("failed to query daemon peer count: ") << (!info_err.empty() ? info_err : tr("unknown error"));
+    return true;
+  }
+
+  const uint64_t total_peers = info_res.outgoing_connections_count + info_res.incoming_connections_count;
+  if (total_peers == 0)
+  {
+    fail_msg_writer() << tr("cannot register masternode while daemon has no peers; wait until at least one peer is connected");
+    return true;
+  }
 
   if (args.size() != 2 && args.size() != 3)
   {

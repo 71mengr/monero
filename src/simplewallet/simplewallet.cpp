@@ -44,6 +44,7 @@
 #include <sstream>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <ctype.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
@@ -6855,6 +6856,32 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
   success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(m_current_subaddress_account, false)) << ", "
     << tr("unlocked balance: ") << print_money(unlocked_balance) << unlock_time_message << extra;
+
+  uint64_t masternode_balance = 0;
+  std::vector<tools::wallet2::transfer_details> transfers;
+  m_wallet->get_transfers(transfers);
+  for (const auto& td : transfers)
+  {
+    if (td.m_subaddr_index.major != m_current_subaddress_account || td.m_spent)
+      continue;
+    if (td.amount() == MASTERNODE_COLLATERAL_EXACT_AMOUNT)
+      masternode_balance += td.amount();
+  }
+
+  std::vector<tools::wallet2::mvm_token_balance_entry> token_balances;
+  m_wallet->get_mvm_token_balances(m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}), token_balances);
+  uint64_t token_balance = 0;
+  std::set<std::string> smart_contract_ids;
+  for (const auto& token : token_balances)
+  {
+    token_balance += token.balance;
+    smart_contract_ids.insert(token.contract_id);
+  }
+
+  success_msg_writer() << tr("Masternode balance: ") << print_money(masternode_balance);
+  success_msg_writer() << tr("Token balance: ") << token_balance;
+  success_msg_writer() << tr("Smart contract balance: ") << smart_contract_ids.size();
+
   print_mvm_token_balances_for_address(m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}), tr("Token balances (primary address)"), false);
   std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, false);
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, false);
@@ -6862,8 +6889,6 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     return true;
   success_msg_writer() << tr("Balance per address:");
   success_msg_writer() << boost::format("%15s %21s %21s %7s %21s") % tr("Address") % tr("Balance") % tr("Unlocked balance") % tr("Outputs") % tr("Label");
-  std::vector<tools::wallet2::transfer_details> transfers;
-  m_wallet->get_transfers(transfers);
   for (const auto& i : balance_per_subaddress)
   {
     cryptonote::subaddress_index subaddr_index = {m_current_subaddress_account, i.first};

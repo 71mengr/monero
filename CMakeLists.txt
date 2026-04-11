@@ -1113,9 +1113,14 @@ if(MINGW)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wa,-mbig-obj")
   set(EXTRA_LIBRARIES mswsock;ws2_32;iphlpapi;crypt32;bcrypt)
   if(DEPENDS)
-    # MinGW ICU import libs are exposed as `icuin`/`icudt` (not `icui18n`/`icudata`)
-    # and do not provide `icutu` in the depends toolchain.
-    set(ICU_LIBRARIES icuio icuin icuuc icudt iconv)
+    # ICU static library names can vary between toolchains (`sicu*` vs `icu*`).
+    # Probe both variants so MinGW cross-builds link reliably.
+    find_library(ICUIO_LIBRARIES NAMES sicuio icuio REQUIRED)
+    find_library(ICUIN_LIBRARIES NAMES sicuin icuin REQUIRED)
+    find_library(ICUUC_LIBRARIES NAMES sicuuc icuuc REQUIRED)
+    find_library(ICUDT_LIBRARIES NAMES sicudt icudt REQUIRED)
+    find_library(ICONV_LIBRARIES NAMES iconv REQUIRED)
+    set(ICU_LIBRARIES ${ICUIO_LIBRARIES} ${ICUIN_LIBRARIES} ${ICUUC_LIBRARIES} ${ICUDT_LIBRARIES} ${ICONV_LIBRARIES})
   else()
     # This is an extremely ugly hack to get around Boost not being built with static ICU.
     # We reported the issue, we are waiting for upstream to fix this issue: https://github.com/boostorg/boost/issues/1079#issue-3384962885

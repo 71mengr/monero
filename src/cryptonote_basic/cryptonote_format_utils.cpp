@@ -753,7 +753,9 @@ namespace cryptonote
   {
     CHECK_AND_ASSERT_MES(registration.version == TX_EXTRA_MASTERNODE_REGISTRATION_VERSION, false, "invalid masternode registration version");
     CHECK_AND_ASSERT_MES(crypto::check_key(registration.operator_pubkey), false, "invalid masternode registration operator pubkey");
+    CHECK_AND_ASSERT_MES(registration.collateral_outpoint.txid != crypto::null_hash, false, "invalid masternode registration collateral txid");
     CHECK_AND_ASSERT_MES(registration.collateral_amount > 0, false, "invalid masternode registration collateral amount");
+    CHECK_AND_ASSERT_MES(registration.service_endpoint_commitment != crypto::null_hash, false, "invalid masternode registration service endpoint commitment");
     crypto::hash preimage_hash{};
     CHECK_AND_ASSERT_MES(get_masternode_registration_hash_preimage(registration, preimage_hash), false, "failed to get masternode registration preimage hash");
     CHECK_AND_ASSERT_MES(crypto::check_signature(preimage_hash, registration.operator_pubkey, registration.operator_signature), false, "invalid masternode registration operator signature");

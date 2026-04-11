@@ -220,6 +220,30 @@ TEST(masternode_registration_tx_extra, rejects_invalid_signature)
   ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
 }
 
+TEST(masternode_registration_tx_extra, rejects_null_service_endpoint_commitment)
+{
+  auto payload = make_masternode_registration_payload();
+  payload.service_endpoint_commitment = crypto::null_hash;
+
+  crypto::hash preimage_hash{};
+  ASSERT_TRUE(cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash));
+
+  std::vector<uint8_t> extra{};
+  ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
+}
+
+TEST(masternode_registration_tx_extra, rejects_null_collateral_txid)
+{
+  auto payload = make_masternode_registration_payload();
+  payload.collateral_outpoint.txid = crypto::null_hash;
+
+  crypto::hash preimage_hash{};
+  ASSERT_TRUE(cryptonote::get_masternode_registration_hash_preimage(payload, preimage_hash));
+
+  std::vector<uint8_t> extra{};
+  ASSERT_FALSE(cryptonote::add_masternode_registration_to_tx_extra(extra, payload));
+}
+
 TEST(masternode_registration_tx_extra, payload_string_roundtrip)
 {
   const auto payload = make_masternode_registration_payload();

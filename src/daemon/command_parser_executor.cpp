@@ -349,7 +349,7 @@ bool t_command_parser_executor::service_provider_list(const std::vector<std::str
 
   std::cout << "service_provider_list (mainnet/testnet enabled)" << std::endl;
   std::cout << "  Discovery source: P2P service-provider announcements (COMMAND_NOTIFY_SERVICE_PROVIDER)." << std::endl;
-  std::cout << "  Local providers can be announced via: ./monerod --be_a_service_provider <address>" << std::endl;
+  std::cout << "  Local providers can be announced via: ./uzoqamd --be_a_service_provider <address>" << std::endl;
   std::cout << "  Pricing consensus:" << std::endl;
   std::cout << "    1 month  = " << service_subscription::one_month_amount_atomic / COIN << " XMR" << std::endl;
   std::cout << "    2 months = " << service_subscription::two_months_amount_atomic / COIN << " XMR" << std::endl;
@@ -1134,10 +1134,10 @@ bool t_command_parser_executor::prune_blockchain(const std::vector<std::string>&
 
   if (args.empty() || args[0] != "confirm")
   {
-    std::cout << "Warning: pruning from within monerod will not shrink the database file size." << std::endl;
+    std::cout << "Warning: pruning from within uzoqamd will not shrink the database file size." << std::endl;
     std::cout << "Instead, parts of the file will be marked as free, so the file will not grow" << std::endl;
     std::cout << "until that newly free space is used up. If you want a smaller file size now," << std::endl;
-    std::cout << "exit monerod and run uzoqam-blockchain-prune (you will temporarily need more" << std::endl;
+    std::cout << "exit uzoqamd and run uzoqam-blockchain-prune (you will temporarily need more" << std::endl;
     std::cout << "disk space for the database conversion though). If you are OK with the database" << std::endl;
     std::cout << "file keeping the same size, re-run this command with the \"confirm\" parameter." << std::endl;
     return true;

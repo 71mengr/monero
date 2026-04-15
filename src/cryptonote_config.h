@@ -168,7 +168,7 @@
 
 #define RPC_IP_FAILS_BEFORE_BLOCK                       3
 
-#define CRYPTONOTE_NAME                         "bitmonero"
+#define CRYPTONOTE_NAME                         "bituzoqam"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
 #define P2P_NET_DATA_FILENAME                   "p2pstate.bin"
@@ -238,8 +238,8 @@ namespace config
   uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 18;
   uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 19;
   uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 42;
-  uint16_t const P2P_DEFAULT_PORT = 40001;
-  uint16_t const RPC_DEFAULT_PORT = 40000;
+  uint16_t const P2P_DEFAULT_PORT = 3000;
+  uint16_t const RPC_DEFAULT_PORT = 3001;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 11119;
   boost::uuids::uuid const NETWORK_ID_V16 = { {
       0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x40

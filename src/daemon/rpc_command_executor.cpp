@@ -1113,7 +1113,7 @@ bool t_rpc_command_executor::print_token_list()
 {
   if (m_is_rpc)
   {
-    tools::fail_msg_writer() << "tokenlist is currently available only on local monerod console mode";
+    tools::fail_msg_writer() << "tokenlist is currently available only on local uzoqamd console mode";
     return true;
   }
 
@@ -1147,7 +1147,7 @@ bool t_rpc_command_executor::print_contract_list()
 {
   if (m_is_rpc)
   {
-    tools::fail_msg_writer() << "contractlist is currently available only on local monerod console mode";
+    tools::fail_msg_writer() << "contractlist is currently available only on local uzoqamd console mode";
     return true;
   }
 
@@ -1178,7 +1178,7 @@ bool t_rpc_command_executor::print_token_info(const std::string &symbol_or_contr
 {
   if (m_is_rpc)
   {
-    tools::fail_msg_writer() << "tokeninfo is currently available only on local monerod console mode";
+    tools::fail_msg_writer() << "tokeninfo is currently available only on local uzoqamd console mode";
     return true;
   }
 
@@ -1702,10 +1702,10 @@ bool t_rpc_command_executor::print_status()
   bool daemon_is_alive = m_rpc_client->check_connection();
 
   if(daemon_is_alive) {
-    tools::success_msg_writer() << "monerod is running";
+    tools::success_msg_writer() << "uzoqamd is running";
   }
   else {
-    tools::fail_msg_writer() << "monerod is NOT running";
+    tools::fail_msg_writer() << "uzoqamd is NOT running";
   }
 
   return true;

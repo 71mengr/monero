@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Monero Smart Contract (MSC) Builder
+Uzoqam Smart Contract (MSC) Builder
 
-Creates deterministic, Monero-native contract packages for operational execution.
-This is NOT an on-chain VM; it is a contract artifact format for Monero workflows
+Creates deterministic, Uzoqam-native contract packages for operational execution.
+This is NOT an on-chain VM; it is a contract artifact format for Uzoqam workflows
 (multisig, time-lock, and oracle-driven settlement) with deterministic IDs.
 """
 
@@ -127,9 +127,9 @@ def build_contract_package(
         "terms_hash": terms_hash,
         "network_binding": rpc_meta,
         "execution_notes": {
-            "engine": "off-chain-monero-native",
+            "engine": "off-chain-uzoqam-native",
             "description": (
-                "Execute actions through Monero primitives (multisig, timelock, signer rotation) "
+                "Execute actions through Uzoqam primitives (multisig, timelock, signer rotation) "
                 "when all rule conditions are met."
             ),
         },
@@ -140,10 +140,10 @@ def build_contract_package(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build deterministic Monero Smart Contract package")
+    parser = argparse.ArgumentParser(description="Build deterministic Uzoqam Smart Contract package")
     parser.add_argument("--input", required=True, help="Path to source contract JSON")
     parser.add_argument("--output", required=True, help="Path to output package JSON")
-    parser.add_argument("--rpc-url", default="", help="Optional monerod RPC URL for network binding")
+    parser.add_argument("--rpc-url", default="", help="Optional uzoqamd RPC URL for network binding")
     parser.add_argument(
         "--created-at",
         default="",

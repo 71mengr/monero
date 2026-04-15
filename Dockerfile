@@ -41,26 +41,26 @@ RUN set -ex && \
     rm -rf /var/lib/apt
 COPY --from=builder /src/build/x86_64-linux-gnu/release/bin /usr/local/bin/
 
-# Create monero user
-RUN adduser --system --group --disabled-password monero && \
-	mkdir -p /wallet /home/monero/.bitmonero && \
-	chown -R monero:monero /home/monero/.bitmonero && \
-	chown -R monero:monero /wallet
+# Create uzoqam user
+RUN adduser --system --group --disabled-password uzoqam && \
+	mkdir -p /wallet /home/uzoqam/.bituzoqam && \
+	chown -R uzoqam:uzoqam /home/uzoqam/.bituzoqam && \
+	chown -R uzoqam:uzoqam /wallet
 
 # Contains the blockchain
-VOLUME /home/monero/.bitmonero
+VOLUME /home/uzoqam/.bituzoqam
 
 # Generate your wallet via accessing the container and run:
 # cd /wallet
-# monero-wallet-cli
+# uzoqam-wallet-cli
 VOLUME /wallet
 
-EXPOSE 33339
+EXPOSE 40001
 EXPOSE 40000
 
-# switch to user monero
-USER monero
+# switch to user uzoqam
+USER uzoqam
 
-ENTRYPOINT ["monerod"]
+ENTRYPOINT ["uzoqamd"]
 CMD ["--p2p-bind-ip=0.0.0.0", "--p2p-bind-port=33339", "--rpc-bind-ip=0.0.0.0", "--rpc-bind-port=40000", "--non-interactive", "--confirm-external-bind"]
 

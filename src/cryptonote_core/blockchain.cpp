@@ -68,6 +68,7 @@
 #include "common/data_cache.h"
 #include "time_helper.h"
 #include "serialization/binary_utils.h"
+#include "pos/pos.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain"
@@ -315,7 +316,8 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_btc_valid(false),
   m_batch_success(true),
   m_prepare_height(0),
-  m_rct_ver_cache()
+  m_rct_ver_cache(),
+  m_pos_manager(std::make_unique<pos::pos_manager>())
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 }

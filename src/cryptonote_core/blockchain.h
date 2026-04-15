@@ -44,6 +44,7 @@
 #include <boost/multi_index/member.hpp>
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -66,6 +67,7 @@
 #include "blockchain_db/blockchain_db.h"
 
 namespace tools { class Notify; }
+namespace pos { class pos_manager; }
 
 namespace cryptonote
 {
@@ -1304,6 +1306,8 @@ namespace cryptonote
     std::vector<BlockNotifyCallback> m_block_notifiers;
     std::vector<MinerNotifyCallback> m_miner_notifiers;
     std::shared_ptr<tools::Notify> m_reorg_notify;
+
+    std::unique_ptr<pos::pos_manager> m_pos_manager;
 
     // for prepare_handle_incoming_blocks
     uint64_t m_prepare_height;

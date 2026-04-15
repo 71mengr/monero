@@ -333,6 +333,24 @@ namespace cryptonote
       return true;
     }
 
+    bool check_tx_output_target_policy(const transaction& tx)
+    {
+      if (tx.version == transaction::TXV_VEO)
+      {
+        for (const auto& out : tx.vout)
+          if (out.target.type() != typeid(txout_to_veo))
+            return false;
+      }
+      else if (tx.version == transaction::TXV_DELEGATE)
+      {
+        for (const auto& out : tx.vout)
+          if (out.target.type() != typeid(txout_to_delegate))
+            return false;
+      }
+
+      return true;
+    }
+
     // external lock must be held for the comparison+set to work properly
     void set_if_less(std::atomic<time_t>& next_check, const time_t candidate) noexcept
     {
@@ -381,6 +399,13 @@ namespace cryptonote
     {
       LOG_PRINT_L1("transaction " << id << " failed non-input consensus rule checks");
       tvc.m_verifivation_failed = true; // should already be set, but just in case
+      return false;
+    }
+
+    if (!check_tx_output_target_policy(tx))
+    {
+      LOG_PRINT_L1("transaction " << id << " failed tx output target policy checks");
+      tvc.m_verifivation_failed = true;
       return false;
     }
 

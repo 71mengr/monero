@@ -4290,7 +4290,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     MWARNING("RCT cache is not caching new verification results. Please update RCT_CACHE_TYPE!");
   }
 
-  if (tx.version == 1)
+  if (tx.version == transaction::TXV_LEGACY)
   {
     if (threads > 1)
     {
@@ -4309,7 +4309,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
   }
-  else
+  else if (tx.version == transaction::TXV_RINGCT)
   {
     // from version 2, check ringct signatures
     // obviously, the original and simple rct APIs use a mixRing that's indexes
@@ -4420,6 +4420,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
       }
     }
+  }
+  else
+  {
+    // Non-ringct custom transaction versions are validated by semantic/output checks.
+    return true;
   }
   return true;
 }

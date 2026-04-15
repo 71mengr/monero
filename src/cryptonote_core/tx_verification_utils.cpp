@@ -138,7 +138,7 @@ static bool ver_non_input_consensus_templated(TxForwardIt tx_begin, TxForwardIt 
     std::vector<const rct::rctSig*> rvv;
     rvv.reserve(static_cast<size_t>(std::distance(tx_begin, tx_end)));
 
-    const size_t max_tx_version = hf_version < HF_VERSION_DYNAMIC_FEE ? 1 : 2;
+    const size_t max_tx_version = hf_version < HF_VERSION_DYNAMIC_FEE ? transaction::TXV_LEGACY : CURRENT_TRANSACTION_VERSION;
 
     const size_t tx_weight_limit = get_transaction_weight_limit(hf_version);
 
@@ -212,7 +212,7 @@ static bool ver_non_input_consensus_templated(TxForwardIt tx_begin, TxForwardIt 
         }
 
         // We only want to check RingCT semantics if this is actually a RingCT transaction
-        if (tx.version >= 2)
+        if (tx.version == transaction::TXV_RINGCT)
             rvv.push_back(&tx.rct_signatures);
     }
 

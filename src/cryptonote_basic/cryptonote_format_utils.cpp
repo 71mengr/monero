@@ -1102,6 +1102,26 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool check_output_types(const transaction& tx, const uint8_t hf_version)
   {
+    if (tx.version == transaction::TXV_VEO)
+    {
+      for (const auto &o: tx.vout)
+      {
+        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_to_veo), false, "wrong variant type: "
+          << o.target.type().name() << ", expected txout_to_veo in transaction id=" << get_transaction_hash(tx));
+      }
+      return true;
+    }
+
+    if (tx.version == transaction::TXV_DELEGATE)
+    {
+      for (const auto &o: tx.vout)
+      {
+        CHECK_AND_ASSERT_MES(o.target.type() == typeid(txout_to_delegate), false, "wrong variant type: "
+          << o.target.type().name() << ", expected txout_to_delegate in transaction id=" << get_transaction_hash(tx));
+      }
+      return true;
+    }
+
     for (const auto &o: tx.vout)
     {
       if (hf_version > HF_VERSION_VIEW_TAGS)

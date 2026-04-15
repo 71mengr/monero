@@ -369,58 +369,13 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::start(const account_public_address& adr, size_t threads_count, bool do_background, bool ignore_battery)
   {
-    m_block_reward = 0;
-    m_mine_address = adr;
-    m_threads_total = static_cast<uint32_t>(threads_count);
-    if (threads_count == 0)
-    {
-      m_threads_autodetect.clear();
-      m_threads_autodetect.push_back({epee::misc_utils::get_ns_count(), m_total_hashes});
-      m_threads_total = 1;
-    }
-    m_starter_nonce = crypto::rand<uint32_t>();
-    CRITICAL_REGION_LOCAL(m_threads_lock);
-    if(is_mining())
-    {
-      LOG_ERROR("Starting miner but it's already started");
-      return false;
-    }
-
-    if(!m_threads.empty())
-    {
-      LOG_ERROR("Unable to start miner because there are active mining threads");
-      return false;
-    }
-
-    request_block_template();//lets update block template
-
-    m_stop = false;
-    m_thread_index = 0;
-    set_is_background_mining_enabled(do_background);
-    set_ignore_battery(ignore_battery);
-    
-    for(size_t i = 0; i != m_threads_total; i++)
-    {
-      m_threads.push_back(boost::thread(m_attrs, boost::bind(&miner::worker_thread, this)));
-    }
-
-    if (threads_count == 0)
-      MINFO("Mining has started, autodetecting optimal number of threads, good luck!" );
-    else
-      MINFO("Mining has started with " << threads_count << " threads, good luck!" );
-
-    if( get_is_background_mining_enabled() )
-    {
-      m_background_mining_thread = boost::thread(m_attrs, boost::bind(&miner::background_worker_thread, this));
-      LOG_PRINT_L0("Background mining controller thread started" );
-    }
-
-    if(get_ignore_battery())
-    {
-      MINFO("Ignoring battery");
-    }
-
-    return true;
+    MINFO("PoS fork: mining disabled");
+    m_stop = true;
+    (void)adr;
+    (void)threads_count;
+    (void)do_background;
+    (void)ignore_battery;
+    return false;
   }
   //-----------------------------------------------------------------------------------------------------
   uint64_t miner::get_speed() const

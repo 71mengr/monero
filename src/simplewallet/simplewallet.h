@@ -229,6 +229,10 @@ namespace cryptonote
     bool change_password(const std::vector<std::string>& args);
     bool payment_id(const std::vector<std::string> &args);
     bool masternode_register(const std::vector<std::string> &args);
+    bool create_veo(const std::vector<std::string> &args);
+    bool delegate_stake(const std::vector<std::string> &args);
+    bool get_validator_list(const std::vector<std::string> &args);
+    bool get_stake_status(const std::vector<std::string> &args);
     bool mvm_create_contract(const std::vector<std::string> &args);
     bool mvm_create_token(const std::vector<std::string> &args);
     bool mvm_mint_token(const std::vector<std::string> &args);

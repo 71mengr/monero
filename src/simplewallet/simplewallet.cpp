@@ -206,6 +206,10 @@ namespace
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
   const char* USAGE_MASTERNODE_REGISTER("masternode_register [<collateral_amount>] <address> <amount>");
+  const char* USAGE_CREATE_VEO("create_veo <validator_pubkey_hex> <amount> <lock_until_height> [eligibility_round]");
+  const char* USAGE_DELEGATE("delegate <delegator_pubkey_hex> <validator_pubkey_hex> <amount> <lock_blocks>");
+  const char* USAGE_GET_VALIDATOR_LIST("get_validator_list");
+  const char* USAGE_GET_STAKE_STATUS("get_stake_status <validator_pubkey_hex>");
   constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
   const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount> [<salt>]");
@@ -1228,6 +1232,147 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
   }
 
   success_msg_writer() << tr("Masternode registration transaction submitted.");
+  return true;
+}
+
+bool simple_wallet::create_veo(const std::vector<std::string> &args)
+{
+  if (args.size() < 3 || args.size() > 4)
+  {
+    PRINT_USAGE(USAGE_CREATE_VEO);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  COMMAND_RPC_CREATE_VEO::request req = AUTO_VAL_INIT(req);
+  req.validator_pubkey = args[0];
+  if (!epee::string_tools::get_xtype_from_string(req.visible_amount, args[1]) ||
+      !epee::string_tools::get_xtype_from_string(req.lock_until_height, args[2]))
+  {
+    fail_msg_writer() << tr("invalid amount or lock_until_height");
+    return true;
+  }
+  req.eligibility_round = 0;
+  if (args.size() == 4 && !epee::string_tools::get_xtype_from_string(req.eligibility_round, args[3]))
+  {
+    fail_msg_writer() << tr("invalid eligibility_round");
+    return true;
+  }
+
+  COMMAND_RPC_CREATE_VEO::response res;
+  const bool ok = m_wallet->invoke_http_json("/create_veo", req, res);
+  const std::string err = interpret_rpc_response(ok, res.status);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("create_veo failed: ") << err;
+    return true;
+  }
+
+  success_msg_writer() << tr("VEO validator registration accepted");
+  success_msg_writer() << tr("tx_extra_veo payload: ") << res.tx_extra_hex;
+  return true;
+}
+
+bool simple_wallet::delegate_stake(const std::vector<std::string> &args)
+{
+  if (args.size() != 4)
+  {
+    PRINT_USAGE(USAGE_DELEGATE);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  COMMAND_RPC_DELEGATE::request req = AUTO_VAL_INIT(req);
+  req.delegator_pubkey = args[0];
+  req.validator_pubkey = args[1];
+  if (!epee::string_tools::get_xtype_from_string(req.amount, args[2]) ||
+      !epee::string_tools::get_xtype_from_string(req.lock_blocks, args[3]))
+  {
+    fail_msg_writer() << tr("invalid amount or lock_blocks");
+    return true;
+  }
+
+  COMMAND_RPC_DELEGATE::response res;
+  const bool ok = m_wallet->invoke_http_json("/delegate", req, res);
+  const std::string err = interpret_rpc_response(ok, res.status);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("delegate failed: ") << err;
+    return true;
+  }
+
+  success_msg_writer() << tr("Delegation accepted");
+  return true;
+}
+
+bool simple_wallet::get_validator_list(const std::vector<std::string> &args)
+{
+  if (!args.empty())
+  {
+    PRINT_USAGE(USAGE_GET_VALIDATOR_LIST);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  COMMAND_RPC_GET_VALIDATOR_LIST::request req;
+  COMMAND_RPC_GET_VALIDATOR_LIST::response res;
+  const bool ok = m_wallet->invoke_http_json("/get_validator_list", req, res);
+  const std::string err = interpret_rpc_response(ok, res.status);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("get_validator_list failed: ") << err;
+    return true;
+  }
+
+  success_msg_writer() << tr("Total stake: ") << res.total_stake;
+  for (const auto &validator : res.validators)
+  {
+    message_writer() << " - " << validator.validator_pubkey
+                     << " total=" << validator.total_stake
+                     << " self=" << validator.self_stake
+                     << " delegated=" << validator.delegated_stake
+                     << " active=" << (validator.is_active ? "yes" : "no");
+  }
+  return true;
+}
+
+bool simple_wallet::get_stake_status(const std::vector<std::string> &args)
+{
+  if (args.size() != 1)
+  {
+    PRINT_USAGE(USAGE_GET_STAKE_STATUS);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  COMMAND_RPC_GET_STAKE_STATUS::request req;
+  req.validator_pubkey = args[0];
+  COMMAND_RPC_GET_STAKE_STATUS::response res;
+  const bool ok = m_wallet->invoke_http_json("/get_stake_status", req, res);
+  const std::string err = interpret_rpc_response(ok, res.status);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("get_stake_status failed: ") << err;
+    return true;
+  }
+
+  if (!res.found)
+  {
+    message_writer() << tr("Validator not found.");
+    return true;
+  }
+
+  success_msg_writer() << tr("Validator: ") << req.validator_pubkey;
+  message_writer() << tr("Total stake: ") << res.total_stake;
+  message_writer() << tr("Self stake: ") << res.self_stake;
+  message_writer() << tr("Delegated stake: ") << res.delegated_stake;
+  message_writer() << tr("Registered height: ") << res.registered_height;
+  message_writer() << tr("Last active height: ") << res.last_active_height;
+  message_writer() << tr("Active: ") << (res.is_active ? "yes" : "no");
   return true;
 }
 
@@ -4392,6 +4537,22 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::masternode_register, _1),
                            tr(USAGE_MASTERNODE_REGISTER),
                            tr("Automatically build and broadcast a masternode registration transaction."));
+  m_cmd_binder.set_handler("create_veo",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::create_veo, _1),
+                           tr(USAGE_CREATE_VEO),
+                           tr("Register a validator by sending a tx_extra_veo payload to daemon PoS logic."));
+  m_cmd_binder.set_handler("delegate",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::delegate_stake, _1),
+                           tr(USAGE_DELEGATE),
+                           tr("Delegate stake from a delegator key to a validator key."));
+  m_cmd_binder.set_handler("get_validator_list",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_validator_list, _1),
+                           tr(USAGE_GET_VALIDATOR_LIST),
+                           tr("List active validators and current stake totals."));
+  m_cmd_binder.set_handler("get_stake_status",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_stake_status, _1),
+                           tr(USAGE_GET_STAKE_STATUS),
+                           tr("Query stake status for one validator public key."));
   m_cmd_binder.set_handler("mvm_create_contract",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_create_contract, _1),
                            tr(USAGE_MVM_CREATE_CONTRACT),

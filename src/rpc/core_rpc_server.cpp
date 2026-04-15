@@ -65,6 +65,7 @@ using namespace epee;
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
+#include "pos/pos.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -180,6 +181,13 @@ namespace
       case cryptonote::FAKECHAIN: return "fakechain";
       default: return "unknown";
     }
+  }
+
+  bool parse_public_key_hex(const std::string &hex, crypto::public_key &out)
+  {
+    if (hex.size() != 64)
+      return false;
+    return epee::string_tools::hex_to_pod(hex, out);
   }
 }
 
@@ -1697,6 +1705,153 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_create_veo(const COMMAND_RPC_CREATE_VEO::request& req, COMMAND_RPC_CREATE_VEO::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(create_veo);
+    CHECK_CORE_READY();
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    crypto::public_key validator_pubkey{};
+    if (!parse_public_key_hex(req.validator_pubkey, validator_pubkey))
+    {
+      res.status = "Failed, invalid validator_pubkey";
+      return true;
+    }
+
+    cryptonote::tx_extra_veo veo{};
+    veo.version = 1;
+    veo.visible_amount = req.visible_amount;
+    veo.validator_pubkey = validator_pubkey;
+    veo.lock_until_height = req.lock_until_height;
+    veo.eligibility_round = req.eligibility_round;
+
+    std::vector<uint8_t> extra;
+    if (!cryptonote::add_veo_to_tx_extra(extra, veo))
+    {
+      res.status = "Failed, could not serialize tx_extra_veo";
+      return true;
+    }
+
+    cryptonote::tx_extra_veo parsed_veo{};
+    if (!cryptonote::get_veo_from_tx_extra(extra, parsed_veo))
+    {
+      res.status = "Failed, could not deserialize tx_extra_veo";
+      return true;
+    }
+
+    const uint64_t height = m_core.get_current_blockchain_height();
+    res.accepted = pos_manager->register_validator(parsed_veo.validator_pubkey, parsed_veo.visible_amount, height);
+    if (res.accepted)
+      pos_manager->process_epoch_end(height);
+
+    res.tx_extra_hex = epee::string_tools::buff_to_hex_nodelimer(std::string(extra.begin(), extra.end()));
+    res.status = res.accepted ? CORE_RPC_STATUS_OK : "Failed, validator registration rejected";
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_delegate(const COMMAND_RPC_DELEGATE::request& req, COMMAND_RPC_DELEGATE::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(delegate);
+    CHECK_CORE_READY();
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    crypto::public_key delegator_pubkey{};
+    crypto::public_key validator_pubkey{};
+    if (!parse_public_key_hex(req.delegator_pubkey, delegator_pubkey) || !parse_public_key_hex(req.validator_pubkey, validator_pubkey))
+    {
+      res.status = "Failed, invalid delegator_pubkey or validator_pubkey";
+      return true;
+    }
+
+    const uint64_t height = m_core.get_current_blockchain_height();
+    res.accepted = pos_manager->add_delegation(delegator_pubkey, validator_pubkey, req.amount, height, req.lock_blocks);
+    if (res.accepted)
+      pos_manager->process_epoch_end(height);
+    res.status = res.accepted ? CORE_RPC_STATUS_OK : "Failed, delegation rejected";
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_validator_list(const COMMAND_RPC_GET_VALIDATOR_LIST::request& req, COMMAND_RPC_GET_VALIDATOR_LIST::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_validator_list);
+    CHECK_CORE_READY();
+    (void)req;
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    const auto validators = pos_manager->get_active_validators();
+    res.validators.reserve(validators.size());
+    for (const auto &validator : validators)
+    {
+      COMMAND_RPC_GET_VALIDATOR_LIST::validator_entry entry{};
+      entry.validator_pubkey = epee::string_tools::pod_to_hex(validator.key);
+      entry.total_stake = validator.total_stake;
+      entry.self_stake = validator.self_stake;
+      entry.delegated_stake = validator.delegated_stake;
+      entry.last_active_height = validator.last_active_height;
+      entry.is_active = validator.is_active;
+      res.validators.push_back(std::move(entry));
+    }
+
+    res.total_stake = pos_manager->get_total_stake();
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_stake_status(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_stake_status);
+    CHECK_CORE_READY();
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    crypto::public_key validator_pubkey{};
+    if (!parse_public_key_hex(req.validator_pubkey, validator_pubkey))
+    {
+      res.status = "Failed, invalid validator_pubkey";
+      return true;
+    }
+
+    pos::validator_record record{};
+    res.found = pos_manager->get_validator(validator_pubkey, record);
+    if (!res.found)
+    {
+      res.status = "Validator not found";
+      return true;
+    }
+
+    res.total_stake = record.total_stake;
+    res.self_stake = record.self_stake;
+    res.delegated_stake = record.delegated_stake;
+    res.last_active_height = record.last_active_height;
+    res.registered_height = record.registered_height;
+    res.is_active = record.is_active;
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(stop_mining);
@@ -2969,6 +3124,50 @@ namespace cryptonote
   bool core_rpc_server::on_get_web3_network_json(const COMMAND_RPC_GET_WEB3_NETWORK::request& req, COMMAND_RPC_GET_WEB3_NETWORK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     if (!on_get_web3_network(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_create_veo_json(const COMMAND_RPC_CREATE_VEO::request& req, COMMAND_RPC_CREATE_VEO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_create_veo(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_delegate_json(const COMMAND_RPC_DELEGATE::request& req, COMMAND_RPC_DELEGATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_delegate(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_validator_list_json(const COMMAND_RPC_GET_VALIDATOR_LIST::request& req, COMMAND_RPC_GET_VALIDATOR_LIST::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_validator_list(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_stake_status_json(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_stake_status(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = res.status;

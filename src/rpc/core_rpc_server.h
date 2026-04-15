@@ -116,6 +116,10 @@ namespace cryptonote
       MAP_URI_AUTO_JON2("/send_raw_transaction", on_send_raw_tx, COMMAND_RPC_SEND_RAW_TX)
       MAP_URI_AUTO_JON2("/sendrawtransaction", on_send_raw_tx, COMMAND_RPC_SEND_RAW_TX)
       MAP_URI_AUTO_JON2_IF("/start_mining", on_start_mining, COMMAND_RPC_START_MINING, !m_restricted)
+      MAP_URI_AUTO_JON2_IF("/create_veo", on_create_veo, COMMAND_RPC_CREATE_VEO, !m_restricted)
+      MAP_URI_AUTO_JON2_IF("/delegate", on_delegate, COMMAND_RPC_DELEGATE, !m_restricted)
+      MAP_URI_AUTO_JON2("/get_validator_list", on_get_validator_list, COMMAND_RPC_GET_VALIDATOR_LIST)
+      MAP_URI_AUTO_JON2("/get_stake_status", on_get_stake_status, COMMAND_RPC_GET_STAKE_STATUS)
       MAP_URI_AUTO_JON2_IF("/stop_mining", on_stop_mining, COMMAND_RPC_STOP_MINING, !m_restricted)
       MAP_URI_AUTO_JON2_IF("/mining_status", on_mining_status, COMMAND_RPC_MINING_STATUS, !m_restricted)
       MAP_URI_AUTO_JON2_IF("/save_bc", on_save_bc, COMMAND_RPC_SAVE_BC, !m_restricted)
@@ -167,6 +171,10 @@ namespace cryptonote
         MAP_JON_RPC_WE("submit_block",           on_submitblock,                COMMAND_RPC_SUBMITBLOCK)
         MAP_JON_RPC_WE("submitblock",            on_submitblock,                COMMAND_RPC_SUBMITBLOCK)
         MAP_JON_RPC_WE_IF("generateblocks",         on_generateblocks,             COMMAND_RPC_GENERATEBLOCKS, !m_restricted)
+        MAP_JON_RPC_WE_IF("create_veo",             on_create_veo_json,            COMMAND_RPC_CREATE_VEO, !m_restricted)
+        MAP_JON_RPC_WE_IF("delegate",               on_delegate_json,              COMMAND_RPC_DELEGATE, !m_restricted)
+        MAP_JON_RPC_WE("get_validator_list",        on_get_validator_list_json,    COMMAND_RPC_GET_VALIDATOR_LIST)
+        MAP_JON_RPC_WE("get_stake_status",          on_get_stake_status_json,      COMMAND_RPC_GET_STAKE_STATUS)
         MAP_JON_RPC_WE("get_last_block_header",  on_get_last_block_header,      COMMAND_RPC_GET_LAST_BLOCK_HEADER)
         MAP_JON_RPC_WE("getlastblockheader",     on_get_last_block_header,      COMMAND_RPC_GET_LAST_BLOCK_HEADER)
         MAP_JON_RPC_WE("get_block_header_by_hash", on_get_block_header_by_hash,   COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH)
@@ -227,6 +235,10 @@ namespace cryptonote
     bool on_get_indexes(const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request& req, COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response& res, const connection_context *ctx = NULL);
     bool on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request& req, COMMAND_RPC_SEND_RAW_TX::response& res, const connection_context *ctx = NULL);
     bool on_start_mining(const COMMAND_RPC_START_MINING::request& req, COMMAND_RPC_START_MINING::response& res, const connection_context *ctx = NULL);
+    bool on_create_veo(const COMMAND_RPC_CREATE_VEO::request& req, COMMAND_RPC_CREATE_VEO::response& res, const connection_context *ctx = NULL);
+    bool on_delegate(const COMMAND_RPC_DELEGATE::request& req, COMMAND_RPC_DELEGATE::response& res, const connection_context *ctx = NULL);
+    bool on_get_validator_list(const COMMAND_RPC_GET_VALIDATOR_LIST::request& req, COMMAND_RPC_GET_VALIDATOR_LIST::response& res, const connection_context *ctx = NULL);
+    bool on_get_stake_status(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, const connection_context *ctx = NULL);
     bool on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, const connection_context *ctx = NULL);
     bool on_mining_status(const COMMAND_RPC_MINING_STATUS::request& req, COMMAND_RPC_MINING_STATUS::response& res, const connection_context *ctx = NULL);
     bool on_get_outs_bin(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res, const connection_context *ctx = NULL);
@@ -266,6 +278,10 @@ namespace cryptonote
     bool on_add_aux_pow(const COMMAND_RPC_ADD_AUX_POW::request& req, COMMAND_RPC_ADD_AUX_POW::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_generateblocks(const COMMAND_RPC_GENERATEBLOCKS::request& req, COMMAND_RPC_GENERATEBLOCKS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_create_veo_json(const COMMAND_RPC_CREATE_VEO::request& req, COMMAND_RPC_CREATE_VEO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_delegate_json(const COMMAND_RPC_DELEGATE::request& req, COMMAND_RPC_DELEGATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_validator_list_json(const COMMAND_RPC_GET_VALIDATOR_LIST::request& req, COMMAND_RPC_GET_VALIDATOR_LIST::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_stake_status_json(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_last_block_header(const COMMAND_RPC_GET_LAST_BLOCK_HEADER::request& req, COMMAND_RPC_GET_LAST_BLOCK_HEADER::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_block_header_by_hash(const COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::request& req, COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_block_header_by_height(const COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request& req, COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

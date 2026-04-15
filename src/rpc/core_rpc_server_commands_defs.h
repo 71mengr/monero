@@ -695,6 +695,150 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
   //-----------------------------------------------
+  struct COMMAND_RPC_CREATE_VEO
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string validator_pubkey;
+      uint64_t visible_amount;
+      uint64_t lock_until_height;
+      uint64_t eligibility_round;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(validator_pubkey)
+        KV_SERIALIZE(visible_amount)
+        KV_SERIALIZE(lock_until_height)
+        KV_SERIALIZE_OPT(eligibility_round, (uint64_t)0)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool accepted;
+      std::string tx_extra_hex;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(accepted)
+        KV_SERIALIZE(tx_extra_hex)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
+  struct COMMAND_RPC_DELEGATE
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string delegator_pubkey;
+      std::string validator_pubkey;
+      uint64_t amount;
+      uint64_t lock_blocks;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(delegator_pubkey)
+        KV_SERIALIZE(validator_pubkey)
+        KV_SERIALIZE(amount)
+        KV_SERIALIZE(lock_blocks)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool accepted;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(accepted)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_VALIDATOR_LIST
+  {
+    struct request_t: public rpc_request_base
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct validator_entry
+    {
+      std::string validator_pubkey;
+      uint64_t total_stake;
+      uint64_t self_stake;
+      uint64_t delegated_stake;
+      uint64_t last_active_height;
+      bool is_active;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(validator_pubkey)
+        KV_SERIALIZE(total_stake)
+        KV_SERIALIZE(self_stake)
+        KV_SERIALIZE(delegated_stake)
+        KV_SERIALIZE(last_active_height)
+        KV_SERIALIZE(is_active)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t: public rpc_response_base
+    {
+      std::vector<validator_entry> validators;
+      uint64_t total_stake;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(validators)
+        KV_SERIALIZE(total_stake)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_STAKE_STATUS
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string validator_pubkey;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(validator_pubkey)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool found;
+      uint64_t total_stake;
+      uint64_t self_stake;
+      uint64_t delegated_stake;
+      uint64_t last_active_height;
+      uint64_t registered_height;
+      bool is_active;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(found)
+        KV_SERIALIZE(total_stake)
+        KV_SERIALIZE(self_stake)
+        KV_SERIALIZE(delegated_stake)
+        KV_SERIALIZE(last_active_height)
+        KV_SERIALIZE(registered_height)
+        KV_SERIALIZE(is_active)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
   struct COMMAND_RPC_GET_INFO
   {
     struct request_t: public rpc_access_request_base

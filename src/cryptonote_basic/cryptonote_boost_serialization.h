@@ -114,6 +114,24 @@ namespace boost
   }
 
   template <class Archive>
+  inline void serialize(Archive &a, cryptonote::txout_to_veo &x, const boost::serialization::version_type ver)
+  {
+    a & x.amount;
+    a & x.validator_key;
+    a & x.lock_blocks;
+    a & x.registered_height;
+  }
+
+  template <class Archive>
+  inline void serialize(Archive &a, cryptonote::txout_to_delegate &x, const boost::serialization::version_type ver)
+  {
+    a & x.amount;
+    a & x.delegator_key;
+    a & x.validator_key;
+    a & x.lock_blocks;
+  }
+
+  template <class Archive>
   inline void serialize(Archive &a, cryptonote::txout_to_scripthash &x, const boost::serialization::version_type ver)
   {
     a & x.hash;

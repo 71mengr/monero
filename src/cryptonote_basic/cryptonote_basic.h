@@ -96,6 +96,36 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  struct txout_to_veo
+  {
+    uint64_t amount;
+    crypto::public_key validator_key;
+    uint32_t lock_blocks;
+    uint32_t registered_height;
+
+    BEGIN_SERIALIZE_OBJECT()
+      VARINT_FIELD(amount)
+      FIELD(validator_key)
+      VARINT_FIELD(lock_blocks)
+      VARINT_FIELD(registered_height)
+    END_SERIALIZE()
+  };
+
+  struct txout_to_delegate
+  {
+    uint64_t amount;
+    crypto::public_key delegator_key;
+    crypto::public_key validator_key;
+    uint32_t lock_blocks;
+
+    BEGIN_SERIALIZE_OBJECT()
+      VARINT_FIELD(amount)
+      FIELD(delegator_key)
+      FIELD(validator_key)
+      VARINT_FIELD(lock_blocks)
+    END_SERIALIZE()
+  };
+
   /* inputs */
 
   struct txin_gen
@@ -149,9 +179,19 @@ namespace cryptonote
   };
 
 
+  enum txout_target_type : uint8_t
+  {
+    TXOUT_TO_SCRIPT = 0,
+    TXOUT_TO_SCRIPTHASH = 1,
+    TXOUT_TO_KEY = 2,
+    TXOUT_TO_TAGGED_KEY = 3,
+    TXOUT_TO_VEO = 4,
+    TXOUT_TO_DELEGATE = 5
+  };
+
   typedef boost::variant<txin_gen, txin_to_script, txin_to_scripthash, txin_to_key> txin_v;
 
-  typedef boost::variant<txout_to_script, txout_to_scripthash, txout_to_key, txout_to_tagged_key> txout_target_v;
+  typedef boost::variant<txout_to_script, txout_to_scripthash, txout_to_key, txout_to_tagged_key, txout_to_veo, txout_to_delegate> txout_target_v;
 
   //typedef std::pair<uint64_t, txout> out_t;
   struct tx_out
@@ -171,6 +211,15 @@ namespace cryptonote
   {
 
   public:
+    enum txversion : size_t
+    {
+      TXV_LEGACY = 1,
+      TXV_RINGCT = 2,
+      TXV_PERMISSIONED = 3,
+      TXV_VEO = 4,
+      TXV_DELEGATE = 5
+    };
+
     // tx information
     size_t   version;
     uint64_t unlock_time;  //number of block (or time), used as a limitation like: spend this tx not early then block/time
@@ -582,6 +631,8 @@ VARIANT_TAG(binary_archive, cryptonote::txout_to_script, 0x0);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_scripthash, 0x1);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_key, 0x2);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_tagged_key, 0x3);
+VARIANT_TAG(binary_archive, cryptonote::txout_to_veo, 0x4);
+VARIANT_TAG(binary_archive, cryptonote::txout_to_delegate, 0x5);
 VARIANT_TAG(binary_archive, cryptonote::transaction, 0xcc);
 VARIANT_TAG(binary_archive, cryptonote::block, 0xbb);
 
@@ -593,6 +644,8 @@ VARIANT_TAG(json_archive, cryptonote::txout_to_script, "script");
 VARIANT_TAG(json_archive, cryptonote::txout_to_scripthash, "scripthash");
 VARIANT_TAG(json_archive, cryptonote::txout_to_key, "key");
 VARIANT_TAG(json_archive, cryptonote::txout_to_tagged_key, "tagged_key");
+VARIANT_TAG(json_archive, cryptonote::txout_to_veo, "veo");
+VARIANT_TAG(json_archive, cryptonote::txout_to_delegate, "delegate");
 VARIANT_TAG(json_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(json_archive, cryptonote::block, "block");
 
@@ -604,5 +657,7 @@ VARIANT_TAG(debug_archive, cryptonote::txout_to_script, "script");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_scripthash, "scripthash");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_key, "key");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_tagged_key, "tagged_key");
+VARIANT_TAG(debug_archive, cryptonote::txout_to_veo, "veo");
+VARIANT_TAG(debug_archive, cryptonote::txout_to_delegate, "delegate");
 VARIANT_TAG(debug_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(debug_archive, cryptonote::block, "block");

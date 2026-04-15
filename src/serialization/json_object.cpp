@@ -587,6 +587,56 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_to_tagged_key&
   GET_FROM_JSON_OBJECT(val, txout.view_tag, view_tag);
 }
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_to_veo& txout)
+{
+  dest.StartObject();
+
+  INSERT_INTO_JSON_OBJECT(dest, amount, txout.amount);
+  INSERT_INTO_JSON_OBJECT(dest, validator_key, txout.validator_key);
+  INSERT_INTO_JSON_OBJECT(dest, lock_blocks, txout.lock_blocks);
+  INSERT_INTO_JSON_OBJECT(dest, registered_height, txout.registered_height);
+
+  dest.EndObject();
+}
+
+void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_to_veo& txout)
+{
+  if (!val.IsObject())
+  {
+    throw WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, txout.amount, amount);
+  GET_FROM_JSON_OBJECT(val, txout.validator_key, validator_key);
+  GET_FROM_JSON_OBJECT(val, txout.lock_blocks, lock_blocks);
+  GET_FROM_JSON_OBJECT(val, txout.registered_height, registered_height);
+}
+
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txout_to_delegate& txout)
+{
+  dest.StartObject();
+
+  INSERT_INTO_JSON_OBJECT(dest, amount, txout.amount);
+  INSERT_INTO_JSON_OBJECT(dest, delegator_key, txout.delegator_key);
+  INSERT_INTO_JSON_OBJECT(dest, validator_key, txout.validator_key);
+  INSERT_INTO_JSON_OBJECT(dest, lock_blocks, txout.lock_blocks);
+
+  dest.EndObject();
+}
+
+void fromJsonValue(const rapidjson::Value& val, cryptonote::txout_to_delegate& txout)
+{
+  if (!val.IsObject())
+  {
+    throw WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, txout.amount, amount);
+  GET_FROM_JSON_OBJECT(val, txout.delegator_key, delegator_key);
+  GET_FROM_JSON_OBJECT(val, txout.validator_key, validator_key);
+  GET_FROM_JSON_OBJECT(val, txout.lock_blocks, lock_blocks);
+}
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::tx_out& txout)
 {
   dest.StartObject();
@@ -613,6 +663,14 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::t
     void operator()(cryptonote::txout_to_scripthash const& output) const
     {
       INSERT_INTO_JSON_OBJECT(dest, to_scripthash, output);
+    }
+    void operator()(cryptonote::txout_to_veo const& output) const
+    {
+      INSERT_INTO_JSON_OBJECT(dest, to_veo, output);
+    }
+    void operator()(cryptonote::txout_to_delegate const& output) const
+    {
+      INSERT_INTO_JSON_OBJECT(dest, to_delegate, output);
     }
   };
   boost::apply_visitor(add_output{dest}, txout.target);
@@ -659,6 +717,18 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::tx_out& txout)
     else if (elem.name == "to_scripthash")
     {
       cryptonote::txout_to_scripthash tmpVal;
+      fromJsonValue(elem.value, tmpVal);
+      txout.target = std::move(tmpVal);
+    }
+    else if (elem.name == "to_veo")
+    {
+      cryptonote::txout_to_veo tmpVal;
+      fromJsonValue(elem.value, tmpVal);
+      txout.target = std::move(tmpVal);
+    }
+    else if (elem.name == "to_delegate")
+    {
+      cryptonote::txout_to_delegate tmpVal;
       fromJsonValue(elem.value, tmpVal);
       txout.target = std::move(tmpVal);
     }

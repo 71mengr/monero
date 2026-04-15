@@ -43,6 +43,7 @@
 #define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS     0x04
 #define TX_EXTRA_TAG_MASTERNODE_REGISTRATION 0x05
 #define TX_EXTRA_TAG_MVM_CONTRACT           0x06
+#define TX_EXTRA_TAG_VEO                    0x07
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG   0xDE
 
 #define TX_EXTRA_NONCE_PAYMENT_ID           0x00
@@ -334,11 +335,32 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  // Public staking commitment for PoS validator eligibility.
+  // Unlike regular Monero transfer outputs, the staked amount is intentionally explicit.
+  struct tx_extra_veo
+  {
+    uint8_t version = 1;
+    uint64_t visible_amount = 0;
+    crypto::public_key validator_pubkey{};
+    uint64_t lock_until_height = 0;
+    uint64_t eligibility_round = 0;
+
+    BEGIN_SERIALIZE()
+      FIELD(version)
+      VARINT_FIELD(visible_amount)
+      FIELD(validator_pubkey)
+      VARINT_FIELD(lock_until_height)
+      VARINT_FIELD(eligibility_round)
+      if (version != 1) return false;
+      if (visible_amount == 0) return false;
+    END_SERIALIZE()
+  };
+
   // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
   //   varint size;
   //   varint data[];
-  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_masternode_registration, tx_extra_mvm_contract, tx_extra_mysterious_minergate> tx_extra_field;
+  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_masternode_registration, tx_extra_mvm_contract, tx_extra_veo, tx_extra_mysterious_minergate> tx_extra_field;
 }
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding, TX_EXTRA_TAG_PADDING);
@@ -348,4 +370,5 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERG
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_masternode_registration, TX_EXTRA_TAG_MASTERNODE_REGISTRATION);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mvm_contract, TX_EXTRA_TAG_MVM_CONTRACT);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_veo, TX_EXTRA_TAG_VEO);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);

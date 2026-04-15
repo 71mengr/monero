@@ -54,8 +54,6 @@ if(ARCH_ID STREQUAL "i386" OR ARCH_ID STREQUAL "x86_64" OR ARCH_ID STREQUAL "x86
 list(APPEND crypto_sources CryptonightR_template.S)
 endif()
 
-include_directories(${RANDOMX_INCLUDE})
-
 set(crypto_headers)
 
 monero_find_all_headers(crypto_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -69,7 +67,6 @@ monero_add_library(cncrypto
 target_link_libraries(cncrypto
   PUBLIC
     epee
-    randomx
     ${Boost_SYSTEM_LIBRARY}
     ${SODIUM_LIBRARY}
   PRIVATE

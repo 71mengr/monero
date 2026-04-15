@@ -153,6 +153,17 @@ bool get_mvm_contract_from_tx(
   return true;
 }
 
+bool has_veo_commitment(const cryptonote::transaction& tx, cryptonote::tx_extra_veo* out_veo = nullptr)
+{
+  cryptonote::tx_extra_veo veo{};
+  if (!cryptonote::get_veo_from_tx_extra(tx.extra, veo))
+    return false;
+
+  if (out_veo)
+    *out_veo = veo;
+  return true;
+}
+
 cryptonote::blobdata serialize_mvm_contract_blob(
     const crypto::hash& tx_hash,
     const uint64_t height,
@@ -2645,12 +2656,15 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       return false;
     }
 
-    // Check the block's hash against the difficulty target for its alt chain
-    difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
+    const bool pos_block = has_veo_commitment(b.miner_tx);
+
+    // Check the block's hash against the difficulty target for its alt chain.
+    // VEO blocks run in PoS mode and skip PoW validation.
+    difficulty_type current_diff = pos_block ? 1 : get_next_difficulty_for_alternative_chain(alt_chain, bei);
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
     crypto::hash proof_of_work;
     memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-    if (b.major_version >= RX_BLOCK_VERSION)
+    if (!pos_block && b.major_version >= RX_BLOCK_VERSION)
     {
       crypto::hash seedhash = null_hash;
       uint64_t seedheight = rx_seedheight(bei.height);
@@ -2670,11 +2684,11 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
         seedhash = get_block_id_by_height(seedheight);
       }
       get_altblock_longhash(bei.bl, proof_of_work, seedhash);
-    } else
+    } else if (!pos_block)
     {
       get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
     }
-    if(!check_hash(proof_of_work, current_diff))
+    if(!pos_block && !check_hash(proof_of_work, current_diff))
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
       bvc.m_verifivation_failed = true;
@@ -4920,6 +4934,10 @@ leave:
   }
 
   TIME_MEASURE_FINISH(t2);
+  // PoS transition: if miner_tx carries a VEO commitment, treat the block as a
+  // stake block and bypass PoW difficulty / longhash validation.
+  const bool pos_block = has_veo_commitment(bl.miner_tx);
+
   //check proof of work
   TIME_MEASURE_START(target_calculating_time);
 
@@ -4928,7 +4946,7 @@ leave:
   // so we need to check the return type.
   // FIXME: get_difficulty_for_next_block can also assert, look into
   // changing this to throwing exceptions instead so we can clean up.
-  difficulty_type current_diffic = get_difficulty_for_next_block();
+  difficulty_type current_diffic = pos_block ? 1 : get_difficulty_for_next_block();
   CHECK_AND_ASSERT_MES(current_diffic, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
 
   TIME_MEASURE_FINISH(target_calculating_time);
@@ -4969,7 +4987,7 @@ leave:
     }
   }
 #endif
-  if (!fast_check)
+  if (!fast_check && !pos_block)
   {
     auto it = m_blocks_longhash_table.find(id);
     if (it != m_blocks_longhash_table.end())
@@ -5001,6 +5019,9 @@ leave:
       goto leave;
     }
   }
+
+  if (pos_block)
+    MINFO("Accepted VEO PoS block at height " << blockchain_height << " (PoW difficulty checks skipped).");
 
   TIME_MEASURE_FINISH(longhash_calculating_time);
   if (precomputed)

@@ -1057,6 +1057,10 @@ namespace cryptonote
       output_public_key = boost::get< txout_to_key >(out.target).key;
     else if (out.target.type() == typeid(txout_to_tagged_key))
       output_public_key = boost::get< txout_to_tagged_key >(out.target).key;
+    else if (out.target.type() == typeid(txout_to_veo))
+      output_public_key = boost::get< txout_to_veo >(out.target).validator_key;
+    else if (out.target.type() == typeid(txout_to_delegate))
+      output_public_key = boost::get< txout_to_delegate >(out.target).delegator_key;
     else
     {
       LOG_ERROR("Unexpected output target type found: " << out.target.type().name());

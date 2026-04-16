@@ -2143,9 +2143,17 @@ void wallet2::check_acc_out_precomp(const tx_out &o, const crypto::key_derivatio
   crypto::public_key output_public_key;
   if (!get_output_public_key(o, output_public_key))
   {
-     tx_scan_info.error = true;
-     LOG_ERROR("wrong type id in transaction out");
-     return;
+    if (o.target.type() == typeid(cryptonote::txout_to_veo) || o.target.type() == typeid(cryptonote::txout_to_delegate))
+    {
+      tx_scan_info.received = boost::none;
+      tx_scan_info.money_transfered = 0;
+      tx_scan_info.error = false;
+      return;
+    }
+
+    tx_scan_info.error = true;
+    LOG_ERROR("wrong type id in transaction out");
+    return;
   }
   tx_scan_info.received = is_out_to_acc_precomp(m_subaddresses, output_public_key, derivation, additional_derivations, i, hwdev, get_output_view_tag(o));
   if(tx_scan_info.received)

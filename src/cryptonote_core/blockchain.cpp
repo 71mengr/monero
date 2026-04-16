@@ -108,6 +108,55 @@ constexpr uint64_t MASTERNODE_ACTIVE_SET_MIN_COLLATERAL = MASTERNODE_COLLATERAL_
 constexpr uint64_t MASTERNODE_MIN_REMAINING_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS / 2;
 constexpr uint64_t MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
 constexpr uint64_t POS_DIFFICULTY_WEIGHT_SCALE = 1000000;
+const crypto::public_key GENESIS_VALIDATOR_PUBLIC_KEY = {{
+    0x9d, 0x22, 0xaf, 0xe7, 0x8f, 0x67, 0xfc, 0x40,
+    0x1f, 0x85, 0xa6, 0xe3, 0x22, 0xba, 0xbb, 0x5b,
+    0x3d, 0x0b, 0x1c, 0xfc, 0xf8, 0x09, 0xc6, 0xbd,
+    0xb6, 0x24, 0x25, 0x23, 0x50, 0xd9, 0x5b, 0x97
+}};
+constexpr uint64_t GENESIS_VALIDATOR_STAKE = 1000000;
+constexpr uint32_t GENESIS_VALIDATOR_LOCK_BLOCKS = 14400;  // 5 days
+
+void configure_genesis_validator_block(cryptonote::block& bl)
+{
+  bl.miner_tx.version = cryptonote::transaction::TXV_VEO;
+  bl.miner_tx.vout.clear();
+
+  cryptonote::tx_out veo_out{};
+  veo_out.amount = GENESIS_VALIDATOR_STAKE;
+  cryptonote::txout_to_veo veo_target{};
+  veo_target.amount = GENESIS_VALIDATOR_STAKE;
+  veo_target.validator_key = GENESIS_VALIDATOR_PUBLIC_KEY;
+  veo_target.lock_blocks = GENESIS_VALIDATOR_LOCK_BLOCKS;
+  veo_target.registered_height = 0;
+  veo_out.target = veo_target;
+  bl.miner_tx.vout.push_back(veo_out);
+
+  cryptonote::tx_extra_veo veo_commitment{};
+  veo_commitment.visible_amount = GENESIS_VALIDATOR_STAKE;
+  veo_commitment.validator_pubkey = GENESIS_VALIDATOR_PUBLIC_KEY;
+  veo_commitment.lock_until_height = GENESIS_VALIDATOR_LOCK_BLOCKS;
+  veo_commitment.eligibility_round = 0;
+  cryptonote::add_veo_to_tx_extra(bl.miner_tx.extra, veo_commitment);
+
+  bl.validator_key = GENESIS_VALIDATOR_PUBLIC_KEY;
+  // Do not embed any validator secret key in source; genesis PoS checks are bypassed by height.
+  bl.signature = crypto::signature{};
+}
+
+void register_genesis_validator_if_needed(pos::pos_manager& pos_manager)
+{
+  if (pos_manager.get_validator_stake(GENESIS_VALIDATOR_PUBLIC_KEY) == 0)
+  {
+    const bool registered = pos_manager.register_validator(GENESIS_VALIDATOR_PUBLIC_KEY, GENESIS_VALIDATOR_STAKE, 0 /*height*/);
+    if (!registered)
+    {
+      MERROR("Failed to register configured genesis validator; ensure GENESIS_VALIDATOR_PUBLIC_KEY is replaced with a valid key");
+      return;
+    }
+    pos_manager.process_epoch_end(0);
+  }
+}
 
 cryptonote::difficulty_type stake_weighted_difficulty(uint64_t validator_stake, uint64_t total_stake)
 {
@@ -574,6 +623,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
     block bl;
     block_verification_context bvc = {};
     generate_genesis_block(bl, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE);
+    configure_genesis_validator_block(bl);
+    register_genesis_validator_if_needed(*m_pos_manager);
     db_wtxn_guard wtxn_guard(m_db);
     add_new_block(bl, bvc);
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "Failed to add genesis block to blockchain");
@@ -591,6 +642,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
 
   db_rtxn_guard rtxn_guard(m_db);
+
+  register_genesis_validator_if_needed(*m_pos_manager);
 
   // Bootstrap rule: local validator state is reconstructed from accepted chain history
   // at startup, not from peer sync summaries or persisted advisory blobs.
@@ -1936,8 +1989,11 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   return next_difficulty(timestamps, cumulative_difficulties, target);
 }
 
-bool Blockchain::check_pow(const block& blk, uint64_t /*height*/, const crypto::hash& blk_hash, difficulty_type diffic) const
+bool Blockchain::check_pow(const block& blk, uint64_t height, const crypto::hash& blk_hash, difficulty_type diffic) const
 {
+  if (height == 0)
+    return true; // Genesis block is preconfigured and does not carry a valid PoS stake/signature.
+
   // In PoS, "difficulty" is the minimum stake threshold for block production.
   if (!m_pos_manager)
     return false;

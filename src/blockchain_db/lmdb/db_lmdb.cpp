@@ -908,7 +908,9 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   MDB_val_set(val_h, tx_hash);
   result = mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &val_h, MDB_GET_BOTH);
   if (result == 0) {
-    txindex *tip = (txindex *)val_h.mv_data;
+    if (val_h.mv_size < sizeof(txindex) || !val_h.mv_data)
+      throw1(DB_ERROR("Corrupt tx index entry when checking for duplicate transaction"));
+    const txindex *tip = (const txindex *)val_h.mv_data;
     throw1(TX_EXISTS(std::string("Attempting to add transaction that's already in the db (tx id ").append(boost::lexical_cast<std::string>(tip->data.tx_id)).append(")").c_str()));
   } else if (result != MDB_NOTFOUND) {
     throw1(DB_ERROR(lmdb_error(std::string("Error checking if tx index exists for tx hash ") + epee::string_tools::pod_to_hex(tx_hash) + ": ", result).c_str()));

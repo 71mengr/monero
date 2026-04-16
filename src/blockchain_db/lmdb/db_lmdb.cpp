@@ -151,13 +151,17 @@ int BlockchainLMDB::compare_uint64(const MDB_val *a, const MDB_val *b)
 
 int BlockchainLMDB::compare_hash32(const MDB_val *a, const MDB_val *b)
 {
-  uint32_t *va = (uint32_t*) a->mv_data;
-  uint32_t *vb = (uint32_t*) b->mv_data;
+  const unsigned char *va = static_cast<const unsigned char*>(a->mv_data);
+  const unsigned char *vb = static_cast<const unsigned char*>(b->mv_data);
   for (int n = 7; n >= 0; n--)
   {
-    if (va[n] == vb[n])
+    uint32_t wa = 0;
+    uint32_t wb = 0;
+    memcpy(&wa, va + (n * sizeof(uint32_t)), sizeof(wa));
+    memcpy(&wb, vb + (n * sizeof(uint32_t)), sizeof(wb));
+    if (wa == wb)
       continue;
-    return va[n] < vb[n] ? -1 : 1;
+    return wa < wb ? -1 : 1;
   }
 
   return 0;

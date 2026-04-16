@@ -1575,6 +1575,13 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
 //------------------------------------------------------------------
 std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const
 {
+  // Difficulty checkpoints were authored for PoW cumulative difficulty.
+  // In PoS mode, per-block difficulty is stake-weighted and can evolve with
+  // validator set/stake changes, so direct PoW checkpoint comparison creates
+  // false-positive "difficulty drift" reports.
+  if (m_pos_manager)
+    return {true, 0};
+
   uint64_t res = 0;
   for (const std::pair<const uint64_t, difficulty_type>& i : m_checkpoints.get_difficulty_points())
   {
@@ -1589,6 +1596,12 @@ std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const
 //------------------------------------------------------------------
 size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_height_opt)
 {
+  if (m_pos_manager)
+  {
+    MDEBUG("Skipping legacy difficulty drift recalculation in PoS mode");
+    return 0;
+  }
+
   if (m_fixed_difficulty)
   {
     return 0;

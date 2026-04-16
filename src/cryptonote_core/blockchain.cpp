@@ -1492,32 +1492,27 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
 // less blocks than desired if there aren't enough.
 difficulty_type Blockchain::get_difficulty_for_next_block()
 {
-  // In PoS, difficulty represents the minimum stake required to be eligible
-  // for block production at the current height.
+  // In PoS, difficulty is derived from the selected validator's stake weight
+  // at the next block height.
   if (!m_pos_manager)
     return pos::MIN_VALIDATOR_STAKE;
 
-  auto validators = m_pos_manager->get_active_validators();
-  if (validators.empty())
-    return pos::MIN_VALIDATOR_STAKE;
-
-  std::sort(validators.begin(), validators.end(), [](const pos::validator_record& a, const pos::validator_record& b) {
-    return a.total_stake > b.total_stake;
-  });
-
-  const uint64_t min_stake_in_set = validators.back().total_stake;
-  const uint64_t median_stake = validators[validators.size() / 2].total_stake;
+  const uint64_t next_height = m_db->height();
+  const crypto::public_key expected_validator = m_pos_manager->select_block_producer(next_height);
+  const uint64_t validator_stake = m_pos_manager->get_validator_stake(expected_validator);
+  const uint64_t total_stake = m_pos_manager->get_total_stake();
+  const difficulty_type weighted = stake_weighted_difficulty(validator_stake, total_stake);
 
   static uint64_t last_log_height = 0;
-  const uint64_t current_height = m_db->height();
-  if (current_height - last_log_height > pos::EPOCH_LENGTH)
+  if (next_height - last_log_height > pos::EPOCH_LENGTH)
   {
-    LOG_PRINT_L0("Stake-Weighted Difficulty: " << min_stake_in_set
-      << " (min) / " << median_stake << " (median)");
-    last_log_height = current_height;
+    LOG_PRINT_L0("Stake-Weighted Difficulty at height " << next_height
+      << ": " << weighted << " (validator stake=" << validator_stake
+      << ", total stake=" << total_stake << ")");
+    last_log_height = next_height;
   }
 
-  return min_stake_in_set > 0 ? min_stake_in_set : pos::MIN_VALIDATOR_STAKE;
+  return weighted > 0 ? weighted : pos::MIN_VALIDATOR_STAKE;
 }
 //------------------------------------------------------------------
 std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const
@@ -1551,7 +1546,7 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   std::vector<difficulty_type> difficulties;
   timestamps.reserve(DIFFICULTY_BLOCKS_COUNT + 1);
   difficulties.reserve(DIFFICULTY_BLOCKS_COUNT + 1);
-  if (start_height > 1)
+  if (!m_pos_manager && start_height > 1)
   {
     for (uint64_t i = 0; i < DIFFICULTY_BLOCKS_COUNT; ++i)
     {
@@ -1567,8 +1562,19 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   std::vector<difficulty_type> new_cumulative_difficulties;
   for (uint64_t height = start_height; height <= top_height; ++height)
   {
-    size_t target = DIFFICULTY_TARGET_V2;
-    difficulty_type recalculated_diff = next_difficulty(timestamps, difficulties, target);
+    difficulty_type recalculated_diff = 0;
+    if (m_pos_manager)
+    {
+      const crypto::public_key expected_validator = m_pos_manager->select_block_producer(height);
+      const uint64_t validator_stake = m_pos_manager->get_validator_stake(expected_validator);
+      const uint64_t total_stake = m_pos_manager->get_total_stake();
+      recalculated_diff = stake_weighted_difficulty(validator_stake, total_stake);
+    }
+    else
+    {
+      size_t target = DIFFICULTY_TARGET_V2;
+      recalculated_diff = next_difficulty(timestamps, difficulties, target);
+    }
 
     boost::multiprecision::uint256_t recalculated_cum_diff_256 = boost::multiprecision::uint256_t(recalculated_diff) + last_cum_diff;
     CHECK_AND_ASSERT_THROW_MES(recalculated_cum_diff_256 <= std::numeric_limits<difficulty_type>::max(), "Difficulty overflow!");
@@ -1591,12 +1597,12 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
         LOG_ERROR(boost::format("%llu / %llu (%.1f%%)") % height % top_height % (100 * (height - drift_start_height) / float(top_height - drift_start_height)));
     }
 
-    if (height > 0)
+    if (!m_pos_manager && height > 0)
     {
       timestamps.push_back(m_db->get_block_timestamp(height));
       difficulties.push_back(recalculated_cum_diff);
     }
-    if (timestamps.size() > DIFFICULTY_BLOCKS_COUNT)
+    if (!m_pos_manager && timestamps.size() > DIFFICULTY_BLOCKS_COUNT)
     {
       CHECK_AND_ASSERT_THROW_MES(timestamps.size() == DIFFICULTY_BLOCKS_COUNT + 1, "Wrong timestamps size: " << timestamps.size());
       timestamps.erase(timestamps.begin());
@@ -1853,6 +1859,17 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
 // an alternate chain.
 difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, block_extended_info& bei) const
 {
+  // PoS-only consensus path: derive effective target from stake weight instead
+  // of PoW history windows.
+  if (m_pos_manager)
+  {
+    const crypto::public_key validator =
+      bei.bl.validator_key == crypto::null_pkey ? m_pos_manager->select_block_producer(bei.height) : bei.bl.validator_key;
+    const uint64_t validator_stake = m_pos_manager->get_validator_stake(validator);
+    const uint64_t total_stake = m_pos_manager->get_total_stake();
+    return stake_weighted_difficulty(validator_stake, total_stake);
+  }
+
   if (m_fixed_difficulty)
   {
     return m_db->height() ? m_fixed_difficulty : 1;
@@ -1918,6 +1935,31 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   // calculate the difficulty target for the block and return it
   return next_difficulty(timestamps, cumulative_difficulties, target);
 }
+
+bool Blockchain::check_pow(const block& blk, uint64_t /*height*/, const crypto::hash& blk_hash, difficulty_type diffic) const
+{
+  // In PoS, "difficulty" is the minimum stake threshold for block production.
+  if (!m_pos_manager)
+    return false;
+
+  const crypto::public_key block_producer = blk.validator_key;
+  const uint64_t validator_stake = m_pos_manager->get_validator_stake(block_producer);
+  const uint64_t required_stake = diffic;
+  if (validator_stake < required_stake)
+  {
+    LOG_ERROR("Block producer stake " << validator_stake
+        << " below required difficulty " << required_stake);
+    return false;
+  }
+
+  if (!m_pos_manager->verify_block_signature(blk_hash, blk.signature, block_producer))
+  {
+    LOG_ERROR("Block signature invalid");
+    return false;
+  }
+
+  return true;
+}
 //------------------------------------------------------------------
 // This function does a sanity check on basic things that all miner
 // transactions have in common, such as:
@@ -1928,10 +1970,14 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
 bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, uint8_t hf_version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
+  const bool is_pos_block = has_veo_commitment(b.miner_tx);
   CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, false, "coinbase transaction in the block has no inputs");
   CHECK_AND_ASSERT_MES(b.miner_tx.vin[0].type() == typeid(txin_gen), false, "coinbase transaction in the block has the wrong type");
   const bool is_genesis_coinbase = (height == 0);
-  CHECK_AND_ASSERT_MES(is_genesis_coinbase || b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX, false, "Invalid coinbase transaction version");
+  CHECK_AND_ASSERT_MES(
+      is_pos_block || is_genesis_coinbase || b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX,
+      false,
+      "Invalid coinbase transaction version");
 
   // for v2 txes (ringct), we only accept empty rct signatures for miner transactions,
   if (hf_version >= HF_VERSION_REJECT_SIGS_IN_COINBASE && b.miner_tx.version >= 2)
@@ -1945,7 +1991,10 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  const bool valid_unlock_time = is_pos_block
+      ? (b.miner_tx.unlock_time == 0 || b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
+      : (b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  CHECK_AND_ASSERT_MES(valid_unlock_time, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW << " (or 0 for PoS)");
 
   //check outs overflow
   if(!check_outs_overflow(b.miner_tx))
@@ -2263,6 +2312,12 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
       seed_hash = get_block_id_by_height(seed_height);
     }
   }
+  if (m_pos_manager)
+    b.validator_key = m_pos_manager->select_block_producer(height);
+  else
+    b.validator_key = crypto::null_pkey;
+  b.signature = crypto::signature{};
+
   b.timestamp = time(NULL);
   b.chainlock = crypto::null_hash;
   if (bonded_validator_registration_tier_is_enabled(m_nettype, b.major_version) &&
@@ -2618,22 +2673,32 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       return false;
     }
 
-    const bool pos_block = has_veo_commitment(b.miner_tx);
-
-    // Check the block's hash against the difficulty target for its alt chain.
-    // VEO blocks run in PoS mode and skip PoW validation.
+    // PoS-only consensus for alt-chains: require deterministic validator and signature.
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
-    if (pos_block)
+    if (m_pos_manager)
     {
-      const uint64_t validator_stake = m_pos_manager ? m_pos_manager->get_validator_stake(b.validator_key) : 0;
-      const uint64_t total_stake = m_pos_manager ? m_pos_manager->get_total_stake() : 0;
-      current_diff = stake_weighted_difficulty(validator_stake, total_stake);
+      const crypto::public_key expected_validator = m_pos_manager->select_block_producer(bei.height);
+      if (b.validator_key != expected_validator)
+      {
+        MERROR_VER("Alt block " << id << " has unexpected validator key at height " << bei.height);
+        bvc.m_verifivation_failed = true;
+        return false;
+      }
+
+      const bool signature_ok = m_pos_manager->verify_block_signature(id, b.signature, expected_validator);
+      if (!signature_ok)
+      {
+        MERROR_VER("Alt block " << id << " has invalid PoS signature");
+        bvc.m_verifivation_failed = true;
+        bvc.m_bad_pow = true;
+        return false;
+      }
     }
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
-    crypto::hash proof_of_work;
-    memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-    if (!pos_block)
+    if (!m_pos_manager)
     {
+      crypto::hash proof_of_work;
+      memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
       if (b.major_version >= RX_BLOCK_VERSION)
       {
         crypto::hash seedhash = null_hash;
@@ -2659,10 +2724,17 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       {
         get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
       }
+      if(!check_hash(proof_of_work, current_diff))
+      {
+        MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
+        bvc.m_verifivation_failed = true;
+        bvc.m_bad_pow = true;
+        return false;
+      }
     }
-    if(!pos_block && !check_hash(proof_of_work, current_diff))
+    if (pos_block && !check_pow(b, bei.height, id, current_diff))
     {
-      MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
+      MERROR_VER("Block with id: " << id << " for alternative chain failed PoS stake/signature verification");
       bvc.m_verifivation_failed = true;
       bvc.m_bad_pow = true;
       return false;
@@ -4971,11 +5043,9 @@ leave:
     const uint64_t total_stake = m_pos_manager->get_total_stake();
     current_diffic = stake_weighted_difficulty(validator_stake, total_stake);
 
-    const bool signature_ok = m_pos_manager->verify_block_signature(id, bl.signature, expected_validator);
-    MDEBUG("Block " << id << " PoS signature verification result: " << (signature_ok ? "ok" : "invalid"));
-    if (!signature_ok)
+    if (!check_pow(bl, blockchain_height, id, current_diffic))
     {
-      LOG_ERROR("Block " << id << " has invalid PoS signature");
+      LOG_ERROR("Block " << id << " failed PoS stake/signature verification");
       bvc.m_verifivation_failed = true;
       bvc.m_bad_pow = true;
       goto leave;

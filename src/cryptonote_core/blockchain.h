@@ -1492,6 +1492,7 @@ namespace cryptonote
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
     bool prevalidate_miner_transaction(const block& b, uint64_t height, uint8_t hf_version);
+    bool check_pow(const block& blk, uint64_t height, const crypto::hash& blk_hash, difficulty_type diffic) const;
 
     /**
      * @brief validates a miner (coinbase) transaction

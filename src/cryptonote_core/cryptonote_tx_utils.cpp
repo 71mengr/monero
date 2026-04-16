@@ -678,13 +678,12 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
-    bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
+    bl.major_version = std::max<uint8_t>(CURRENT_BLOCK_MAJOR_VERSION, 4);
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
-    bl.nonce = nonce;
-    miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, const crypto::hash *seed_hash, unsigned int threads, crypto::hash &hash){
-      return cryptonote::get_block_longhash(NULL, b, hash, height, seed_hash, threads);
-    }, bl, 1, 0, NULL);
+    bl.nonce = 0;
+    bl.validator_key = crypto::public_key{};
+    bl.signature = crypto::signature{};
     bl.invalidate_hashes();
     return true;
   }
@@ -697,29 +696,14 @@ namespace cryptonote
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
-    // block 202612 bug workaround
-    if (height == 202612)
-    {
-      static const std::string longhash_202612 = "84f64766475d51837ac9efbef1926486e58563c95a19fef4aec3254f03000000";
-      epee::string_tools::hex_to_pod(longhash_202612, res);
-      return true;
-    }
-    if (major_version >= RX_BLOCK_VERSION)
-    {
-      crypto::hash hash;
-      if (pbc != NULL)
-      {
-        const uint64_t seed_height = rx_seedheight(height);
-        hash = seed_hash ? *seed_hash : pbc->get_pending_block_id_by_height(seed_height);
-      } else
-      {
-        memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
-      }
-      rx_slow_hash(hash.data, bd.data(), bd.size(), res.data);
-    } else {
-      const int pow_variant = major_version >= 7 ? major_version - 6 : 0;
-      crypto::cn_slow_hash(bd.data(), bd.size(), res, pow_variant, height);
-    }
+    (void)pbc;
+    (void)bd;
+    (void)height;
+    (void)major_version;
+    (void)seed_hash;
+    (void)miners;
+    res = crypto::null_hash;
+
     return true;
   }
 

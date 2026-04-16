@@ -1482,82 +1482,7 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
 // less blocks than desired if there aren't enough.
 difficulty_type Blockchain::get_difficulty_for_next_block()
 {
-  if (m_fixed_difficulty)
-  {
-    return m_db->height() ? m_fixed_difficulty : 1;
-  }
-
-  LOG_PRINT_L3("Blockchain::" << __func__);
-
-  crypto::hash top_hash = get_tail_id();
-  {
-    CRITICAL_REGION_LOCAL(m_difficulty_lock);
-    // we can call this without the blockchain lock, it might just give us
-    // something a bit out of date, but that's fine since anything which
-    // requires the blockchain lock will have acquired it in the first place,
-    // and it will be unlocked only when called from the getinfo RPC
-    if (top_hash == m_difficulty_for_next_block_top_hash)
-      return m_difficulty_for_next_block;
-  }
-
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  std::vector<uint64_t> timestamps;
-  std::vector<difficulty_type> difficulties;
-  uint64_t height;
-  top_hash = get_tail_id(height); // get it again now that we have the lock
-  ++height; // top block height to blockchain height
-  // ND: Speedup
-  // 1. Keep a list of the last 735 (or less) blocks that is used to compute difficulty,
-  //    then when the next block difficulty is queried, push the latest height data and
-  //    pop the oldest one from the list. This only requires 1x read per height instead
-  //    of doing 735 (DIFFICULTY_BLOCKS_COUNT).
-  if (m_reset_timestamps_and_difficulties_height)
-    m_timestamps_and_difficulties_height = 0;
-  if (m_timestamps_and_difficulties_height != 0 && ((height - m_timestamps_and_difficulties_height) == 1) && m_timestamps.size() >= DIFFICULTY_BLOCKS_COUNT)
-  {
-    uint64_t index = height - 1;
-    m_timestamps.push_back(m_db->get_block_timestamp(index));
-    m_difficulties.push_back(m_db->get_block_cumulative_difficulty(index));
-
-    while (m_timestamps.size() > DIFFICULTY_BLOCKS_COUNT)
-      m_timestamps.erase(m_timestamps.begin());
-    while (m_difficulties.size() > DIFFICULTY_BLOCKS_COUNT)
-      m_difficulties.erase(m_difficulties.begin());
-
-    m_timestamps_and_difficulties_height = height;
-    timestamps = m_timestamps;
-    difficulties = m_difficulties;
-  }
-  else
-  {
-    uint64_t offset = height - std::min <uint64_t> (height, static_cast<uint64_t>(DIFFICULTY_BLOCKS_COUNT));
-    if (offset == 0)
-      ++offset;
-
-    timestamps.clear();
-    difficulties.clear();
-    if (height > offset)
-    {
-      timestamps.reserve(height - offset);
-      difficulties.reserve(height - offset);
-    }
-    for (; offset < height; offset++)
-    {
-      timestamps.push_back(m_db->get_block_timestamp(offset));
-      difficulties.push_back(m_db->get_block_cumulative_difficulty(offset));
-    }
-
-    m_timestamps_and_difficulties_height = height;
-    m_timestamps = timestamps;
-    m_difficulties = difficulties;
-  }
-  size_t target = get_difficulty_target();
-  difficulty_type diff = next_difficulty(timestamps, difficulties, target);
-
-  CRITICAL_REGION_LOCAL1(m_difficulty_lock);
-  m_difficulty_for_next_block_top_hash = top_hash;
-  m_difficulty_for_next_block = diff;
-  return diff;
+  return 1;
 }
 //------------------------------------------------------------------
 std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const
@@ -4941,27 +4866,12 @@ leave:
   }
 
   TIME_MEASURE_FINISH(t2);
-  // PoS transition: if miner_tx carries a VEO commitment, treat the block as a
-  // stake block and bypass PoW difficulty / longhash validation.
-  const bool pos_block = has_veo_commitment(bl.miner_tx);
-
-  //check proof of work
+  // PoS-only consensus: enforce validator selection + block signatures.
   TIME_MEASURE_START(target_calculating_time);
-
-  // get the target difficulty for the block.
-  // the calculation can overflow, among other failure cases,
-  // so we need to check the return type.
-  // FIXME: get_difficulty_for_next_block can also assert, look into
-  // changing this to throwing exceptions instead so we can clean up.
-  difficulty_type current_diffic = pos_block ? 1 : get_difficulty_for_next_block();
-  CHECK_AND_ASSERT_MES(current_diffic, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
-
+  difficulty_type current_diffic = 1;
   TIME_MEASURE_FINISH(target_calculating_time);
-
   TIME_MEASURE_START(longhash_calculating_time);
-
-  crypto::hash proof_of_work;
-  memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
+  crypto::hash proof_of_work = crypto::null_hash;
 
   // Formerly the code below contained an if loop with the following condition
   // !m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height())
@@ -4994,24 +4904,39 @@ leave:
     }
   }
 #endif
-  if (!fast_check && !pos_block)
+  if (!fast_check)
   {
-    auto it = m_blocks_longhash_table.find(id);
-    if (it != m_blocks_longhash_table.end())
+    if (!m_pos_manager)
     {
-      precomputed = true;
-      proof_of_work = it->second;
+      MERROR_VER("PoS manager not initialized");
+      bvc.m_verifivation_failed = true;
+      goto leave;
     }
-    else
-      proof_of_work = get_block_longhash(this, bl, blockchain_height, 0);
 
-    // validate proof_of_work versus difficulty target
-    if(!check_hash(proof_of_work, current_diffic))
+    const crypto::public_key expected_validator = m_pos_manager->select_block_producer(blockchain_height);
+    MDEBUG("Selected validator for height " << blockchain_height << ": " << expected_validator);
+    if (bl.validator_key != expected_validator)
     {
-      MERROR_VER("Block with id: " << id << std::endl << "does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", unexpected difficulty: " << current_diffic);
+      MERROR_VER("Block with id: " << id << " has unexpected validator key at height " << blockchain_height);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+
+    const bool signature_ok = m_pos_manager->verify_block_signature(id, bl.signature, expected_validator);
+    MDEBUG("Block " << id << " PoS signature verification result: " << (signature_ok ? "ok" : "invalid"));
+    if (!signature_ok)
+    {
+      LOG_ERROR("Block " << id << " has invalid PoS signature");
       bvc.m_verifivation_failed = true;
       bvc.m_bad_pow = true;
       goto leave;
+    }
+
+    m_pos_manager->update_validator_activity(expected_validator, blockchain_height);
+    if ((blockchain_height % pos::EPOCH_LENGTH) == 0)
+    {
+      LOG_PRINT_L0("PoS epoch end at height " << blockchain_height << ", reshuffling validator order");
+      m_pos_manager->process_epoch_end(blockchain_height);
     }
   }
 
@@ -5026,9 +4951,6 @@ leave:
       goto leave;
     }
   }
-
-  if (pos_block)
-    MINFO("Accepted VEO PoS block at height " << blockchain_height << " (PoW difficulty checks skipped).");
 
   TIME_MEASURE_FINISH(longhash_calculating_time);
   if (precomputed)
@@ -5576,6 +5498,25 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
     bvc.m_verifivation_failed = true;
     return false;
   }
+}
+//------------------------------------------------------------------
+bool Blockchain::produce_pos_block(cryptonote::block& blk, const crypto::public_key& validator_key, const crypto::secret_key& validator_secret_key, uint64_t height, const crypto::hash& prev_hash)
+{
+  blk.major_version = std::max<uint8_t>(blk.major_version, 4);
+  blk.timestamp = time(nullptr);
+  blk.prev_id = prev_hash;
+  blk.validator_key = validator_key;
+  blk.nonce = 0;
+  blk.signature = crypto::signature{};
+  const crypto::hash signing_hash = get_block_hash(blk);
+  crypto::generate_signature(signing_hash, validator_key, validator_secret_key, blk.signature);
+
+  block_verification_context bvc{};
+  pool_supplement ps{};
+  const bool ok = add_new_block(blk, bvc, ps);
+  if (ok)
+    LOG_PRINT_L0("PoS block produced at height " << height << " by validator " << validator_key);
+  return ok;
 }
 //------------------------------------------------------------------
 //TODO: Refactor, consider returning a failure height and letting

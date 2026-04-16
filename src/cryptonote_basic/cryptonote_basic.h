@@ -509,6 +509,8 @@ namespace cryptonote
     uint8_t minor_version;  // now used as a voting mechanism, rather than how this particular block is built
     uint64_t timestamp;
     crypto::hash  prev_id;
+    crypto::public_key validator_key;
+    crypto::signature signature;
     uint32_t nonce;
     crypto::hash  chainlock;
 
@@ -517,6 +519,8 @@ namespace cryptonote
       VARINT_FIELD(minor_version)
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
+      FIELD(validator_key)
+      FIELD(signature)
       FIELD(nonce)
       if (major_version >= HF_MN_REG)
         FIELD(chainlock)

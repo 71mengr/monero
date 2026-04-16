@@ -137,6 +137,14 @@ bool pos_manager::verify_block_signature(const crypto::hash &block_id, const cry
   return crypto::check_signature(block_id, expected_validator, signature);
 }
 
+void pos_manager::update_validator_activity(const crypto::public_key &validator_key, uint64_t height)
+{
+  const std::string key = key_to_string(validator_key);
+  auto it = m_validators.find(key);
+  if (it != m_validators.end())
+    it->second.last_active_height = height;
+}
+
 void pos_manager::process_epoch_end(uint64_t height)
 {
   crypto::hash seed{};
@@ -225,6 +233,33 @@ std::vector<validator_record> pos_manager::get_active_validators() const
   }
 
   return out;
+}
+
+uint64_t pos_manager::get_next_turn_height(const crypto::public_key &validator_key, uint64_t current_height) const
+{
+  if (m_active_validator_order.empty())
+    return 0;
+
+  size_t index = 0;
+  bool found = false;
+  for (size_t i = 0; i < m_active_validator_order.size(); ++i)
+  {
+    if (m_active_validator_order[i] == validator_key)
+    {
+      index = i;
+      found = true;
+      break;
+    }
+  }
+  if (!found)
+    return 0;
+
+  uint64_t h = current_height;
+  const size_t total = m_active_validator_order.size();
+  const size_t slot = static_cast<size_t>(h % total);
+  if (slot <= index)
+    return h + (index - slot);
+  return h + (total - slot + index);
 }
 
 uint64_t pos_manager::get_total_stake() const

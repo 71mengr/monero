@@ -151,10 +151,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::on_block_chain_update()
   {
-    if(!is_mining())
-      return true;
-
-    return request_block_template();
+    return true;
   }
   //-----------------------------------------------------------------------------------------------------
   bool miner::request_block_template()
@@ -369,7 +366,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::start(const account_public_address& adr, size_t threads_count, bool do_background, bool ignore_battery)
   {
-    MINFO("PoS fork: mining disabled");
+    MINFO("PoS fork: mining is permanently disabled. Blocks are produced by validators via VEO transactions.");
     m_stop = true;
     (void)adr;
     (void)threads_count;
@@ -395,33 +392,8 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::stop()
   {
-    MTRACE("Miner has received stop signal");
-
     CRITICAL_REGION_LOCAL(m_threads_lock);
-    bool mining = !m_threads.empty();
-    if (!mining)
-    {
-      MTRACE("Not mining - nothing to stop" );
-      return true;
-    }
-
-    send_stop_signal();
-
-    // In case background mining was active and the miner threads are waiting
-    // on the background miner to signal start. 
-    while (m_threads_active > 0)
-    {
-      m_is_background_mining_started_cond.notify_all();
-      misc_utils::sleep_no_w(100);
-    }
-
-    // The background mining thread could be sleeping for a long time, so we
-    // interrupt it just in case
-    m_background_mining_thread.interrupt();
-    m_background_mining_thread.join();
-    m_is_background_mining_enabled = false;
-
-    MINFO("Mining has been stopped, " << m_threads.size() << " finished" );
+    m_stop = true;
     m_threads.clear();
     m_threads_autodetect.clear();
     return true;

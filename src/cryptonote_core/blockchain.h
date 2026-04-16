@@ -540,6 +540,7 @@ namespace cryptonote
 
     pos::pos_manager* get_pos_manager() { return m_pos_manager.get(); }
     const pos::pos_manager* get_pos_manager() const { return m_pos_manager.get(); }
+    bool produce_pos_block(cryptonote::block& blk, const crypto::public_key& validator_key, const crypto::secret_key& validator_secret_key, uint64_t height, const crypto::hash& prev_hash);
 
     /**
      * @brief get number of outputs of an amount past the minimum spendable age

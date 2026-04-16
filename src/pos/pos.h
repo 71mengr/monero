@@ -48,6 +48,7 @@ public:
 
   crypto::public_key select_block_producer(uint64_t height) const;
   bool verify_block_signature(const crypto::hash &block_id, const crypto::signature &signature, const crypto::public_key &expected_validator) const;
+  void update_validator_activity(const crypto::public_key &validator_key, uint64_t height);
 
   void process_epoch_end(uint64_t height);
   void update_validator_order(const crypto::hash &vrf_seed);
@@ -57,6 +58,8 @@ public:
   bool is_height_finalized(uint64_t height) const;
 
   std::vector<validator_record> get_active_validators() const;
+  const std::vector<crypto::public_key>& get_validator_order() const { return m_active_validator_order; }
+  uint64_t get_next_turn_height(const crypto::public_key &validator_key, uint64_t current_height) const;
   uint64_t get_total_stake() const;
 
 private:

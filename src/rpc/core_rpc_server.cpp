@@ -189,6 +189,13 @@ namespace
       return false;
     return epee::string_tools::hex_to_pod(hex, out);
   }
+
+  bool parse_secret_key_hex(const std::string &hex, crypto::secret_key &out)
+  {
+    if (hex.size() != 64)
+      return false;
+    return epee::string_tools::hex_to_pod(hex, out);
+  }
 }
 
 namespace cryptonote
@@ -1815,6 +1822,85 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_produce_block(const COMMAND_RPC_PRODUCE_BLOCK::request& req, COMMAND_RPC_PRODUCE_BLOCK::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(produce_block);
+    CHECK_CORE_READY();
+
+    crypto::public_key validator_key{};
+    crypto::secret_key validator_secret_key{};
+    if (!parse_public_key_hex(req.validator_key, validator_key) || !parse_secret_key_hex(req.validator_secret_key, validator_secret_key))
+    {
+      res.status = "Failed, invalid validator key material";
+      return true;
+    }
+
+    block blk{};
+    blk.major_version = std::max<uint8_t>(m_core.get_blockchain_storage().get_current_hard_fork_version(), 4);
+    blk.minor_version = m_core.get_blockchain_storage().get_ideal_hard_fork_version();
+    const crypto::hash prev_hash = m_core.get_blockchain_storage().get_tail_id();
+    if (!m_core.get_blockchain_storage().produce_pos_block(blk, validator_key, validator_secret_key, req.height, prev_hash))
+    {
+      res.status = "Failed, PoS block production failed";
+      return true;
+    }
+
+    res.block_hash = epee::string_tools::pod_to_hex(get_block_hash(blk));
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_validator_order(const COMMAND_RPC_GET_VALIDATOR_ORDER::request& req, COMMAND_RPC_GET_VALIDATOR_ORDER::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_validator_order);
+    CHECK_CORE_READY();
+    (void)req;
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    const auto &order = pos_manager->get_validator_order();
+    res.order.reserve(order.size());
+    for (size_t i = 0; i < order.size(); ++i)
+    {
+      COMMAND_RPC_GET_VALIDATOR_ORDER::order_entry entry{};
+      entry.validator_pubkey = epee::string_tools::pod_to_hex(order[i]);
+      entry.turn_position = i;
+      res.order.push_back(std::move(entry));
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_my_turn_info(const COMMAND_RPC_GET_MY_TURN_INFO::request& req, COMMAND_RPC_GET_MY_TURN_INFO::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_my_turn_info);
+    CHECK_CORE_READY();
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    crypto::public_key validator_key{};
+    if (!parse_public_key_hex(req.validator_key, validator_key))
+    {
+      res.status = "Failed, invalid validator_key";
+      return true;
+    }
+
+    const uint64_t current_height = m_core.get_current_blockchain_height();
+    res.next_turn_height = pos_manager->get_next_turn_height(validator_key, current_height);
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_stake_status(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_stake_status);
@@ -3157,6 +3243,39 @@ namespace cryptonote
   bool core_rpc_server::on_get_validator_list_json(const COMMAND_RPC_GET_VALIDATOR_LIST::request& req, COMMAND_RPC_GET_VALIDATOR_LIST::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     if (!on_get_validator_list(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_produce_block_json(const COMMAND_RPC_PRODUCE_BLOCK::request& req, COMMAND_RPC_PRODUCE_BLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_produce_block(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_validator_order_json(const COMMAND_RPC_GET_VALIDATOR_ORDER::request& req, COMMAND_RPC_GET_VALIDATOR_ORDER::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_validator_order(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_my_turn_info_json(const COMMAND_RPC_GET_MY_TURN_INFO::request& req, COMMAND_RPC_GET_MY_TURN_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_my_turn_info(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = res.status;

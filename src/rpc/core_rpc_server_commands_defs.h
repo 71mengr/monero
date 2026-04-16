@@ -839,6 +839,93 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
   //-----------------------------------------------
+  struct COMMAND_RPC_PRODUCE_BLOCK
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string validator_key;
+      std::string validator_secret_key;
+      uint64_t height;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(validator_key)
+        KV_SERIALIZE(validator_secret_key)
+        KV_SERIALIZE(height)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      std::string block_hash;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(block_hash)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_VALIDATOR_ORDER
+  {
+    struct request_t: public rpc_request_base
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct order_entry
+    {
+      std::string validator_pubkey;
+      uint64_t turn_position;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(validator_pubkey)
+        KV_SERIALIZE(turn_position)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t: public rpc_response_base
+    {
+      std::vector<order_entry> order;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(order)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_MY_TURN_INFO
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string validator_key;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(validator_key)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      uint64_t next_turn_height;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(next_turn_height)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
   struct COMMAND_RPC_GET_INFO
   {
     struct request_t: public rpc_access_request_base

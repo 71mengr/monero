@@ -538,6 +538,9 @@ namespace cryptonote
     std::vector<p2p_masternode_info> get_p2p_masternodes(bool include_inactive) const;
     bool get_masternode(const std::string& id, bonded_validator_info& masternode) const;
 
+    pos::pos_manager* get_pos_manager() { return m_pos_manager.get(); }
+    const pos::pos_manager* get_pos_manager() const { return m_pos_manager.get(); }
+
     /**
      * @brief get number of outputs of an amount past the minimum spendable age
      *

@@ -1634,6 +1634,131 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_stake(const wallet_rpc::COMMAND_RPC_STAKE::request& req, wallet_rpc::COMMAND_RPC_STAKE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+
+    try
+    {
+      std::vector<crypto::public_key> validator_keys;
+      validator_keys.reserve(req.validator_keys.size());
+      for (const std::string &key_hex: req.validator_keys)
+      {
+        crypto::public_key key{};
+        if (!epee::string_tools::hex_to_pod(key_hex, key))
+        {
+          er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
+          er.message = "Invalid validator key hex";
+          return false;
+        }
+        validator_keys.push_back(key);
+      }
+
+      std::vector<wallet2::pending_tx> ptx_vector{m_wallet->create_veo_transaction(validator_keys, req.amounts, req.lock_blocks)};
+      return fill_response(ptx_vector, false, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+          res.tx_hash, false, res.tx_blob, false, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_delegate(const wallet_rpc::COMMAND_RPC_DELEGATE::request& req, wallet_rpc::COMMAND_RPC_DELEGATE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+
+    crypto::public_key delegator_key{}, validator_key{};
+    if (!epee::string_tools::hex_to_pod(req.delegator_key, delegator_key) || !epee::string_tools::hex_to_pod(req.validator_key, validator_key))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
+      er.message = "Invalid delegator/validator key hex";
+      return false;
+    }
+
+    try
+    {
+      std::vector<wallet2::pending_tx> ptx_vector{m_wallet->create_delegation_transaction(delegator_key, validator_key, req.amount, req.lock_blocks)};
+      return fill_response(ptx_vector, false, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+          res.tx_hash, false, res.tx_blob, false, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_unstake(const wallet_rpc::COMMAND_RPC_UNSTAKE::request& req, wallet_rpc::COMMAND_RPC_UNSTAKE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Command unavailable in restricted mode.";
+      return false;
+    }
+
+    crypto::hash txid{};
+    if (!epee::string_tools::hex_to_pod(req.veo_txid, txid))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
+      er.message = "Invalid VEO txid hex";
+      return false;
+    }
+
+    try
+    {
+      std::vector<wallet2::pending_tx> ptx_vector{m_wallet->unstake_veo(txid, req.output_index)};
+      return fill_response(ptx_vector, false, res.tx_key, res.amount, res.amounts_by_dest, res.fee, res.weight, res.multisig_txset, res.unsigned_txset, req.do_not_relay,
+          res.tx_hash, false, res.tx_blob, false, res.tx_metadata, res.spent_key_images, er);
+    }
+    catch (const std::exception&)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_get_stake_status(const wallet_rpc::COMMAND_RPC_GET_STAKE_STATUS::request& req, wallet_rpc::COMMAND_RPC_GET_STAKE_STATUS::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    CHECK_IF_BACKGROUND_SYNCING();
+
+    res.staked_balance = m_wallet->staked_balance();
+    const std::map<crypto::hash, std::vector<wallet2::veo_output>> &my_veos = m_wallet->get_my_veos();
+    for (const auto &entry: my_veos)
+    {
+      for (const wallet2::veo_output &veo: entry.second)
+      {
+        wallet_rpc::stake_status_entry status{};
+        status.txid = epee::string_tools::pod_to_hex(entry.first);
+        status.output_index = veo.m_output_index;
+        status.amount = veo.m_amount;
+        status.lock_blocks = veo.m_lock_blocks;
+        status.unlock_height = veo.m_unlock_height;
+        status.is_delegate = veo.m_is_delegate;
+        status.delegator_key = epee::string_tools::pod_to_hex(veo.m_delegator_key);
+        status.validator_key = epee::string_tools::pod_to_hex(veo.m_validator_key);
+        res.veos.push_back(status);
+      }
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_sign_transfer(const wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);

@@ -1036,6 +1036,11 @@ namespace tools
 constexpr const std::chrono::seconds wallet2::rpc_timeout;
 const char* wallet2::tr(const char* str) { return i18n_translate(str, "tools::wallet2"); }
 
+uint64_t get_veo_unlock_height(const txout_to_veo& veo, uint64_t current_height)
+{
+  return current_height + veo.lock_blocks;
+}
+
 gamma_picker::gamma_picker(const std::vector<uint64_t> &rct_offsets, double shape, double scale):
     rct_offsets(rct_offsets)
 {
@@ -1258,6 +1263,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_ring_history_saved(true),
   m_ringdb(),
   m_last_block_reward(0),
+  m_staked_balance(0),
   m_unattended(unattended),
   m_devices_registered(false),
   m_device_last_key_image_sync(0),
@@ -2351,6 +2357,58 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     }
   }
   const std::vector<tx_extra_field> &tx_extra_fields = tx_cache_data.tx_extra_fields.empty() ? local_tx_extra_fields : tx_cache_data.tx_extra_fields;
+
+  const auto existing_veo_it = m_my_veos.find(txid);
+  if (existing_veo_it != m_my_veos.end())
+  {
+    for (const veo_output &existing: existing_veo_it->second)
+      m_staked_balance = m_staked_balance > existing.m_amount ? m_staked_balance - existing.m_amount : 0;
+    m_my_veos.erase(existing_veo_it);
+  }
+
+  const crypto::public_key wallet_spend_key = m_account_public_address.m_spend_public_key;
+  for (size_t i = 0; i < tx.vout.size(); ++i)
+  {
+    const tx_out &out = tx.vout[i];
+    if (out.target.type() == typeid(cryptonote::txout_to_veo))
+    {
+      const cryptonote::txout_to_veo &veo = boost::get<cryptonote::txout_to_veo>(out.target);
+      if (veo.validator_key == wallet_spend_key)
+      {
+        veo_output record{};
+        record.m_amount = veo.amount;
+        record.m_lock_blocks = veo.lock_blocks;
+        record.m_unlock_height = get_veo_unlock_height(veo, height);
+        record.m_registered_height = veo.registered_height;
+        record.m_output_index = i;
+        record.m_is_delegate = false;
+        record.m_delegator_key = crypto::null_pkey;
+        record.m_validator_key = veo.validator_key;
+        m_my_veos[txid].push_back(record);
+        m_staked_balance += veo.amount;
+        LOG_PRINT_L1("Tracked VEO output at " << txid << ":" << i << " amount=" << print_money(veo.amount) << " unlock_height=" << record.m_unlock_height);
+      }
+    }
+    else if (out.target.type() == typeid(cryptonote::txout_to_delegate))
+    {
+      const cryptonote::txout_to_delegate &delegate = boost::get<cryptonote::txout_to_delegate>(out.target);
+      if (delegate.delegator_key == wallet_spend_key || delegate.validator_key == wallet_spend_key)
+      {
+        veo_output record{};
+        record.m_amount = delegate.amount;
+        record.m_lock_blocks = delegate.lock_blocks;
+        record.m_unlock_height = height + delegate.lock_blocks;
+        record.m_registered_height = height;
+        record.m_output_index = i;
+        record.m_is_delegate = true;
+        record.m_delegator_key = delegate.delegator_key;
+        record.m_validator_key = delegate.validator_key;
+        m_my_veos[txid].push_back(record);
+        m_staked_balance += delegate.amount;
+        LOG_PRINT_L1("Tracked delegation output at " << txid << ":" << i << " amount=" << print_money(delegate.amount) << " unlock_height=" << record.m_unlock_height);
+      }
+    }
+  }
 
   // Don't try to extract tx public key if tx has no ouputs
   size_t pk_index = 0;
@@ -4359,6 +4417,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
     memwipe(v.data(), v.size() * sizeof(v[0]));
 
   m_multisig_rescan_k = std::vector<std::vector<rct::key>>{};
+  recompute_staked_balance();
 
   LOG_PRINT_L1("Refresh done, blocks received: " << blocks_fetched << ", balance (all accounts): " << print_money(balance_all(false)) << ", unlocked: " << print_money(unlocked_balance_all(false)));
 }
@@ -7083,7 +7142,25 @@ uint64_t wallet2::unlocked_balance(uint32_t index_major, bool strict, uint64_t *
     if (time_to_unlock && i.second.second.second > *time_to_unlock)
       *time_to_unlock = i.second.second.second;
   }
+  if (index_major == 0)
+    amount = amount > m_staked_balance ? amount - m_staked_balance : 0;
+
   return amount;
+}
+//----------------------------------------------------------------------------------------------------
+uint64_t wallet2::locked_balance(uint32_t index_major, bool strict)
+{
+  const uint64_t total = balance(index_major, strict);
+  const uint64_t unlocked = unlocked_balance(index_major, strict, NULL, NULL);
+  uint64_t locked = total > unlocked ? total - unlocked : 0;
+  if (index_major == 0)
+    locked += m_staked_balance;
+  return locked;
+}
+//----------------------------------------------------------------------------------------------------
+uint64_t wallet2::staked_balance() const
+{
+  return m_staked_balance;
 }
 //----------------------------------------------------------------------------------------------------
 std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_major, bool strict) const
@@ -7137,6 +7214,25 @@ std::map<uint32_t, uint64_t> wallet2::balance_per_subaddress(uint32_t index_majo
    }
   }
   return amount_per_subaddr;
+}
+//----------------------------------------------------------------------------------------------------
+void wallet2::recompute_staked_balance()
+{
+  const uint64_t current_height = get_blockchain_current_height();
+  m_staked_balance = 0;
+  for (auto it = m_my_veos.begin(); it != m_my_veos.end();)
+  {
+    auto &vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(), [current_height](const veo_output &out) {
+      return out.m_unlock_height <= current_height;
+    }), vec.end());
+    for (const veo_output &out: vec)
+      m_staked_balance += out.m_amount;
+    if (vec.empty())
+      it = m_my_veos.erase(it);
+    else
+      ++it;
+  }
 }
 //----------------------------------------------------------------------------------------------------
 std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::unlocked_balance_per_subaddress(uint32_t index_major, bool strict)
@@ -12160,6 +12256,74 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
   // if we made it this far, we're OK to actually send the transactions
   return ptx_vector;
+}
+//----------------------------------------------------------------------------------------------------
+wallet2::pending_tx wallet2::create_veo_transaction(const std::vector<crypto::public_key>& validator_keys, const std::vector<uint64_t>& amounts, uint32_t lock_blocks)
+{
+  THROW_WALLET_EXCEPTION_IF(validator_keys.empty(), error::wallet_internal_error, "No validator keys supplied");
+  THROW_WALLET_EXCEPTION_IF(validator_keys.size() != amounts.size(), error::wallet_internal_error, "validator_keys/amounts size mismatch");
+
+  std::vector<cryptonote::tx_destination_entry> dsts;
+  dsts.reserve(amounts.size());
+  for (const uint64_t amount: amounts)
+    dsts.emplace_back("", amount, m_account_public_address, false);
+
+  std::vector<pending_tx> ptxs = create_transactions_2(dsts, m_default_mixin, m_default_priority, {}, 0, {0});
+  THROW_WALLET_EXCEPTION_IF(ptxs.empty(), error::wallet_internal_error, "Failed to construct VEO transaction");
+
+  pending_tx ptx = ptxs.front();
+  ptx.tx.version = cryptonote::transaction::TXV_VEO;
+  for (size_t i = 0; i < validator_keys.size() && i < ptx.tx.vout.size(); ++i)
+  {
+    cryptonote::txout_to_veo veo{};
+    veo.amount = amounts[i];
+    veo.validator_key = validator_keys[i];
+    veo.lock_blocks = lock_blocks;
+    veo.registered_height = get_blockchain_current_height();
+    ptx.tx.vout[i].amount = amounts[i];
+    ptx.tx.vout[i].target = veo;
+  }
+  return ptx;
+}
+//----------------------------------------------------------------------------------------------------
+wallet2::pending_tx wallet2::create_delegation_transaction(const crypto::public_key& delegator_key, const crypto::public_key& validator_key, uint64_t amount, uint32_t lock_blocks)
+{
+  THROW_WALLET_EXCEPTION_IF(amount == 0, error::wallet_internal_error, "Delegation amount must be non-zero");
+  std::vector<cryptonote::tx_destination_entry> dsts(1, cryptonote::tx_destination_entry("", amount, m_account_public_address, false));
+  std::vector<pending_tx> ptxs = create_transactions_2(dsts, m_default_mixin, m_default_priority, {}, 0, {0});
+  THROW_WALLET_EXCEPTION_IF(ptxs.empty(), error::wallet_internal_error, "Failed to construct delegation transaction");
+
+  pending_tx ptx = ptxs.front();
+  ptx.tx.version = cryptonote::transaction::TXV_DELEGATE;
+  cryptonote::txout_to_delegate delegate{};
+  delegate.amount = amount;
+  delegate.delegator_key = delegator_key;
+  delegate.validator_key = validator_key;
+  delegate.lock_blocks = lock_blocks;
+  THROW_WALLET_EXCEPTION_IF(ptx.tx.vout.empty(), error::wallet_internal_error, "Delegation tx has no outputs");
+  ptx.tx.vout[0].amount = amount;
+  ptx.tx.vout[0].target = delegate;
+  return ptx;
+}
+//----------------------------------------------------------------------------------------------------
+wallet2::pending_tx wallet2::unstake_veo(const crypto::hash& veo_txid, size_t output_index)
+{
+  auto it = m_my_veos.find(veo_txid);
+  THROW_WALLET_EXCEPTION_IF(it == m_my_veos.end(), error::wallet_internal_error, "Unknown VEO txid");
+  THROW_WALLET_EXCEPTION_IF(output_index >= it->second.size(), error::wallet_internal_error, "VEO output index out of range");
+  const veo_output &output = it->second[output_index];
+  const uint64_t current_height = get_blockchain_current_height();
+  THROW_WALLET_EXCEPTION_IF(current_height < output.m_unlock_height, error::wallet_internal_error, "VEO output is still locked");
+
+  std::vector<cryptonote::tx_destination_entry> dsts(1, cryptonote::tx_destination_entry("", output.m_amount, m_account_public_address, false));
+  std::vector<pending_tx> ptxs = create_transactions_2(dsts, m_default_mixin, m_default_priority, {}, 0, {0});
+  THROW_WALLET_EXCEPTION_IF(ptxs.empty(), error::wallet_internal_error, "Failed to construct unstake transaction");
+  pending_tx ptx = ptxs.front();
+  it->second.erase(it->second.begin() + output_index);
+  if (it->second.empty())
+    m_my_veos.erase(it);
+  recompute_staked_balance();
+  return ptx;
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::cold_tx_aux_import(const std::vector<pending_tx> & ptx, const std::vector<std::string> & tx_device_aux)

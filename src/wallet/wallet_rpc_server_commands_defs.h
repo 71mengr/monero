@@ -987,6 +987,114 @@ namespace wallet_rpc
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_STAKE
+  {
+    struct request_t
+    {
+      std::vector<std::string> validator_keys;
+      std::vector<uint64_t> amounts;
+      uint32_t lock_blocks;
+      bool do_not_relay;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(validator_keys)
+        KV_SERIALIZE(amounts)
+        KV_SERIALIZE(lock_blocks)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_DELEGATE
+  {
+    struct request_t
+    {
+      std::string delegator_key;
+      std::string validator_key;
+      uint64_t amount;
+      uint32_t lock_blocks;
+      bool do_not_relay;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(delegator_key)
+        KV_SERIALIZE(validator_key)
+        KV_SERIALIZE(amount)
+        KV_SERIALIZE(lock_blocks)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_UNSTAKE
+  {
+    struct request_t
+    {
+      std::string veo_txid;
+      uint64_t output_index;
+      bool do_not_relay;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(veo_txid)
+        KV_SERIALIZE(output_index)
+        KV_SERIALIZE_OPT(do_not_relay, false)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+    typedef single_transfer_response response_t;
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct stake_status_entry
+  {
+    std::string txid;
+    uint64_t output_index;
+    uint64_t amount;
+    uint32_t lock_blocks;
+    uint64_t unlock_height;
+    bool is_delegate;
+    std::string delegator_key;
+    std::string validator_key;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(txid)
+      KV_SERIALIZE(output_index)
+      KV_SERIALIZE(amount)
+      KV_SERIALIZE(lock_blocks)
+      KV_SERIALIZE(unlock_height)
+      KV_SERIALIZE(is_delegate)
+      KV_SERIALIZE(delegator_key)
+      KV_SERIALIZE(validator_key)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_RPC_GET_STAKE_STATUS
+  {
+    struct request_t
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      uint64_t staked_balance;
+      std::vector<stake_status_entry> veos;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(staked_balance)
+        KV_SERIALIZE(veos)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_DESCRIBE_TRANSFER
   {
     struct source

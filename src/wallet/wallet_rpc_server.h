@@ -97,6 +97,10 @@ namespace tools
         MAP_JON_RPC_WE("mvm_transfer_token", on_mvm_transfer_token, wallet_rpc::COMMAND_RPC_MVM_TRANSFER_TOKEN)
         MAP_JON_RPC_WE("mvm_get_contract_history", on_mvm_get_contract_history, wallet_rpc::COMMAND_RPC_MVM_GET_CONTRACT_HISTORY)
         MAP_JON_RPC_WE("mvm_get_token_balances", on_mvm_get_token_balances, wallet_rpc::COMMAND_RPC_MVM_GET_TOKEN_BALANCES)
+        MAP_JON_RPC_WE("stake",              on_stake,              wallet_rpc::COMMAND_RPC_STAKE)
+        MAP_JON_RPC_WE("delegate",           on_delegate,           wallet_rpc::COMMAND_RPC_DELEGATE)
+        MAP_JON_RPC_WE("unstake",            on_unstake,            wallet_rpc::COMMAND_RPC_UNSTAKE)
+        MAP_JON_RPC_WE("get_stake_status",   on_get_stake_status,   wallet_rpc::COMMAND_RPC_GET_STAKE_STATUS)
         MAP_JON_RPC_WE("sign_transfer",      on_sign_transfer,      wallet_rpc::COMMAND_RPC_SIGN_TRANSFER)
         MAP_JON_RPC_WE("describe_transfer",  on_describe_transfer,  wallet_rpc::COMMAND_RPC_DESCRIBE_TRANSFER)
         MAP_JON_RPC_WE("submit_transfer",    on_submit_transfer,    wallet_rpc::COMMAND_RPC_SUBMIT_TRANSFER)
@@ -201,6 +205,10 @@ namespace tools
       bool on_mvm_transfer_token(const wallet_rpc::COMMAND_RPC_MVM_TRANSFER_TOKEN::request& req, wallet_rpc::COMMAND_RPC_MVM_TRANSFER_TOKEN::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_mvm_get_contract_history(const wallet_rpc::COMMAND_RPC_MVM_GET_CONTRACT_HISTORY::request& req, wallet_rpc::COMMAND_RPC_MVM_GET_CONTRACT_HISTORY::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_mvm_get_token_balances(const wallet_rpc::COMMAND_RPC_MVM_GET_TOKEN_BALANCES::request& req, wallet_rpc::COMMAND_RPC_MVM_GET_TOKEN_BALANCES::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_stake(const wallet_rpc::COMMAND_RPC_STAKE::request& req, wallet_rpc::COMMAND_RPC_STAKE::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_delegate(const wallet_rpc::COMMAND_RPC_DELEGATE::request& req, wallet_rpc::COMMAND_RPC_DELEGATE::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_unstake(const wallet_rpc::COMMAND_RPC_UNSTAKE::request& req, wallet_rpc::COMMAND_RPC_UNSTAKE::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_get_stake_status(const wallet_rpc::COMMAND_RPC_GET_STAKE_STATUS::request& req, wallet_rpc::COMMAND_RPC_GET_STAKE_STATUS::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_sign_transfer(const wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_SIGN_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_describe_transfer(const wallet_rpc::COMMAND_RPC_DESCRIBE_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_DESCRIBE_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_submit_transfer(const wallet_rpc::COMMAND_RPC_SUBMIT_TRANSFER::request& req, wallet_rpc::COMMAND_RPC_SUBMIT_TRANSFER::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);

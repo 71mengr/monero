@@ -487,6 +487,30 @@ private:
       END_SERIALIZE()
     };
 
+    struct veo_output
+    {
+      uint64_t m_amount;
+      uint32_t m_lock_blocks;
+      uint64_t m_unlock_height;
+      uint32_t m_registered_height;
+      uint32_t m_output_index;
+      bool m_is_delegate;
+      crypto::public_key m_delegator_key;
+      crypto::public_key m_validator_key;
+
+      BEGIN_SERIALIZE_OBJECT()
+        VERSION_FIELD(0)
+        VARINT_FIELD(m_amount)
+        VARINT_FIELD(m_lock_blocks)
+        VARINT_FIELD(m_unlock_height)
+        VARINT_FIELD(m_registered_height)
+        VARINT_FIELD(m_output_index)
+        FIELD(m_is_delegate)
+        FIELD(m_delegator_key)
+        FIELD(m_validator_key)
+      END_SERIALIZE()
+    };
+
     struct unconfirmed_transfer_details
     {
       cryptonote::transaction_prefix m_tx;
@@ -1187,6 +1211,8 @@ private:
     // locked & unlocked balance of given or current subaddress account
     uint64_t balance(uint32_t subaddr_index_major, bool strict) const;
     uint64_t unlocked_balance(uint32_t subaddr_index_major, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    uint64_t locked_balance(uint32_t subaddr_index_major, bool strict);
+    uint64_t staked_balance() const;
     // locked & unlocked balance per subaddress of given or current subaddress account
     std::map<uint32_t, uint64_t> balance_per_subaddress(uint32_t subaddr_index_major, bool strict) const;
     std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, bool strict);
@@ -1225,6 +1251,9 @@ private:
     std::vector<wallet2::pending_tx> create_transactions_all(uint64_t below, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices);
     std::vector<wallet2::pending_tx> create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, uint32_t priority, const std::vector<uint8_t>& extra);
     std::vector<wallet2::pending_tx> create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, uint32_t priority, const std::vector<uint8_t>& extra);
+    pending_tx create_veo_transaction(const std::vector<crypto::public_key>& validator_keys, const std::vector<uint64_t>& amounts, uint32_t lock_blocks);
+    pending_tx create_delegation_transaction(const crypto::public_key& delegator_key, const crypto::public_key& validator_key, uint64_t amount, uint32_t lock_blocks);
+    pending_tx unstake_veo(const crypto::hash& veo_txid, size_t output_index);
     bool make_mvm_contract_extra(const std::string &action, const std::string &contract_id, const std::string &code_hash, const std::string &salt, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_create_extra(const std::string &contract_id, const std::string &code_hash, const std::string &salt, const std::string &symbol, const std::string &name, uint64_t supply, uint8_t decimals, const std::string &bytecode_hex, std::vector<uint8_t> &extra) const;
     bool make_mvm_token_mint_extra(const std::string &contract_id, const std::string &code_hash, const std::string &symbol, const std::string &to, uint64_t amount, std::vector<uint8_t> &extra) const;
@@ -1396,11 +1425,19 @@ private:
         return;
       }
       a & m_background_sync_data;
+      if(ver < 32)
+      {
+        m_staked_balance = 0;
+        m_my_veos.clear();
+        return;
+      }
+      a & m_staked_balance;
+      a & m_my_veos;
     }
 
     BEGIN_SERIALIZE_OBJECT()
       MAGIC_FIELD("uzoqam wallet cache")
-      VERSION_FIELD(2)
+      VERSION_FIELD(3)
       FIELD(m_blockchain)
       FIELD(m_transfers)
       FIELD(m_account_public_address)
@@ -1438,6 +1475,14 @@ private:
         return true;
       }
       FIELD(m_background_sync_data)
+      if (version < 3)
+      {
+        m_staked_balance = 0;
+        m_my_veos.clear();
+        return true;
+      }
+      FIELD(m_staked_balance)
+      FIELD(m_my_veos)
     END_SERIALIZE()
 
     /*!
@@ -1993,6 +2038,7 @@ private:
 
     bool should_expand(const cryptonote::subaddress_index &index) const;
     bool spends_one_of_ours(const cryptonote::transaction &tx) const;
+    void recompute_staked_balance();
 
     cryptonote::account_base m_account;
     boost::optional<epee::net_utils::http::login> m_daemon_login;
@@ -2014,6 +2060,7 @@ private:
     payment_container m_payments;
     serializable_unordered_map<crypto::key_image, size_t> m_key_images;
     serializable_unordered_map<crypto::public_key, size_t> m_pub_keys;
+    std::map<crypto::hash, std::vector<veo_output>> m_my_veos;
     cryptonote::account_public_address m_account_public_address;
     serializable_unordered_map<crypto::public_key, cryptonote::subaddress_index> m_subaddresses;
     std::vector<std::vector<std::string>> m_subaddress_labels;
@@ -2124,6 +2171,7 @@ private:
     boost::optional<crypto::chacha_key> m_ringdb_key;
 
     uint64_t m_last_block_reward;
+    uint64_t m_staked_balance;
     std::unique_ptr<tools::file_locker> m_keys_file_locker;
     std::unique_ptr<tools::file_locker> m_background_keys_file_locker;
     
@@ -2155,7 +2203,7 @@ private:
     background_sync_data_t m_background_sync_data;
   };
 }
-BOOST_CLASS_VERSION(tools::wallet2, 31)
+BOOST_CLASS_VERSION(tools::wallet2, 32)
 BOOST_CLASS_VERSION(tools::wallet2::transfer_details, 12)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_info, 1)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
@@ -2173,6 +2221,7 @@ BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 1)
 BOOST_CLASS_VERSION(tools::wallet2::background_synced_tx_t, 0)
 BOOST_CLASS_VERSION(tools::wallet2::background_sync_data_t, 0)
+BOOST_CLASS_VERSION(tools::wallet2::veo_output, 0)
 
 namespace boost
 {

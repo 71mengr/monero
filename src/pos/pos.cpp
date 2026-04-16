@@ -6,7 +6,7 @@
 #include <random>
 #include <tuple>
 
-#include "epee/string_tools.h"
+#include "string_tools.h"
 
 namespace pos
 {

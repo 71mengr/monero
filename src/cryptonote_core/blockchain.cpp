@@ -1944,7 +1944,12 @@ bool Blockchain::check_pow(const block& blk, uint64_t /*height*/, const crypto::
 
   const crypto::public_key block_producer = blk.validator_key;
   const uint64_t validator_stake = m_pos_manager->get_validator_stake(block_producer);
-  const uint64_t required_stake = diffic;
+  if (diffic > std::numeric_limits<uint64_t>::max())
+  {
+    LOG_ERROR("Required stake overflows uint64_t");
+    return false;
+  }
+  const uint64_t required_stake = diffic.convert_to<uint64_t>();
   if (validator_stake < required_stake)
   {
     LOG_ERROR("Block producer stake " << validator_stake
@@ -2675,6 +2680,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
     // PoS-only consensus for alt-chains: require deterministic validator and signature.
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
+    const bool pos_block = has_veo_commitment(b.miner_tx);
     if (m_pos_manager)
     {
       const crypto::public_key expected_validator = m_pos_manager->select_block_producer(bei.height);
@@ -2695,9 +2701,9 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       }
     }
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
+    crypto::hash proof_of_work = crypto::null_hash;
     if (!m_pos_manager)
     {
-      crypto::hash proof_of_work;
       memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
       if (b.major_version >= RX_BLOCK_VERSION)
       {

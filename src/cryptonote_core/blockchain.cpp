@@ -123,6 +123,11 @@ constexpr uint64_t GENESIS_LIQUID_STAKE = GENESIS_PREMINE_SPENDABLE;
 constexpr uint64_t GENESIS_VALIDATOR_STAKE = GENESIS_PREMINE_LOCKED;
 constexpr uint32_t GENESIS_VALIDATOR_LOCK_BLOCKS = (2ULL * 365ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;  // 2 years
 static_assert(GENESIS_LIQUID_STAKE + GENESIS_VALIDATOR_STAKE == GENESIS_PREMINE_TOTAL, "genesis split must match configured premine");
+// NOTE: The PoS bootstrap validator is configured in code here, not in
+// config::{,stagenet,testnet}::GENESIS_TX. The genesis block template is built
+// from GENESIS_TX and then normalized by configure_genesis_validator_block().
+// This guarantees that the initial validator stake/key are deterministic even
+// if legacy GENESIS_TX constants differ.
 
 void configure_genesis_validator_block(cryptonote::block& bl)
 {
@@ -179,6 +184,7 @@ void register_genesis_validator_if_needed(pos::pos_manager& pos_manager)
       MERROR("Failed to register configured genesis validator; ensure GENESIS_VALIDATOR_PUBLIC_KEY is replaced with a valid key");
       return;
     }
+    MINFO("Registered genesis validator " << GENESIS_VALIDATOR_PUBLIC_KEY << " with stake " << GENESIS_VALIDATOR_STAKE);
     pos_manager.process_epoch_end(0);
   }
 }

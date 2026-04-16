@@ -2043,19 +2043,6 @@ bool Blockchain::check_pow(const block& blk, uint64_t height, const crypto::hash
     return false;
 
   const crypto::public_key block_producer = blk.validator_key;
-  const uint64_t validator_stake = m_pos_manager->get_validator_stake(block_producer);
-  if (diffic > std::numeric_limits<uint64_t>::max())
-  {
-    LOG_ERROR("Required stake overflows uint64_t");
-    return false;
-  }
-  const uint64_t required_stake = diffic.convert_to<uint64_t>();
-  if (validator_stake < required_stake)
-  {
-    LOG_ERROR("Block producer stake " << validator_stake
-        << " below required difficulty " << required_stake);
-    return false;
-  }
 
   if (!m_pos_manager->verify_block_signature(blk_hash, blk.signature, block_producer))
   {
@@ -5727,7 +5714,7 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
 //------------------------------------------------------------------
 bool Blockchain::produce_pos_block(cryptonote::block& blk, const crypto::public_key& validator_key, const crypto::secret_key& validator_secret_key, uint64_t height, const crypto::hash& prev_hash)
 {
-  blk.major_version = std::max<uint8_t>(blk.major_version, 4);
+  blk.major_version = std::max<uint8_t>(blk.major_version, 1);
   blk.timestamp = time(nullptr);
   blk.prev_id = prev_hash;
   blk.validator_key = validator_key;

@@ -1856,7 +1856,7 @@ namespace cryptonote
     }
 
     block blk{};
-    blk.major_version = std::max<uint8_t>(m_core.get_blockchain_storage().get_current_hard_fork_version(), 4);
+    blk.major_version = std::max<uint8_t>(m_core.get_blockchain_storage().get_current_hard_fork_version(), 1);
     blk.minor_version = m_core.get_blockchain_storage().get_ideal_hard_fork_version();
     const crypto::hash prev_hash = m_core.get_blockchain_storage().get_tail_id();
     if (!m_core.get_blockchain_storage().produce_pos_block(blk, validator_key, validator_secret_key, req.height, prev_hash))

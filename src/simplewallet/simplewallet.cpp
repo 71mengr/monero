@@ -1398,7 +1398,7 @@ bool simple_wallet::produce_block(const std::vector<std::string> &args)
   COMMAND_RPC_PRODUCE_BLOCK::request req;
   COMMAND_RPC_PRODUCE_BLOCK::response res;
   req.validator_key = epee::string_tools::pod_to_hex(validator_key);
-  req.validator_secret_key = epee::string_tools::pod_to_hex(validator_secret_key);
+  req.validator_secret_key = epee::string_tools::pod_to_hex(unwrap(unwrap(validator_secret_key)));
   req.height = height;
 
   const bool ok = m_wallet->invoke_http_json("/produce_block", req, res);

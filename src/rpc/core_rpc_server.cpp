@@ -1921,7 +1921,17 @@ namespace cryptonote
     }
 
     pos::validator_record record{};
-    res.found = pos_manager->get_validator(validator_pubkey, record);
+    res.found = false;
+    const auto active_validators = pos_manager->get_active_validators();
+    for (const auto &validator : active_validators)
+    {
+      if (validator.key == validator_pubkey)
+      {
+        record = validator;
+        res.found = true;
+        break;
+      }
+    }
     if (!res.found)
     {
       res.status = "Validator not found";

@@ -678,10 +678,10 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
-    bl.major_version = std::max<uint8_t>(CURRENT_BLOCK_MAJOR_VERSION, 4);
+    bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
-    bl.nonce = 0;
+    bl.nonce = nonce;
     bl.validator_key = crypto::public_key{};
     bl.signature = crypto::signature{};
     bl.invalidate_hashes();

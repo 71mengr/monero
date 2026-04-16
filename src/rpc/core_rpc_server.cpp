@@ -584,6 +584,26 @@ namespace cryptonote
     res.top_block_hash = string_tools::pod_to_hex(top_hash);
     res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
+    res.staking_difficulty_interpretation = "Minimum stake needed to enter top 50";
+    res.median_stake = 0;
+    res.active_validators = 0;
+    if (auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager())
+    {
+      auto active_validators = pos_manager->get_active_validators();
+      res.active_validators = active_validators.size();
+      if (!active_validators.empty())
+      {
+        std::vector<uint64_t> stakes;
+        stakes.reserve(active_validators.size());
+        for (const auto &validator : active_validators)
+          stakes.push_back(validator.total_stake);
+        std::sort(stakes.begin(), stakes.end());
+        const size_t mid = stakes.size() / 2;
+        res.median_stake = stakes.size() % 2 == 0
+            ? (stakes[mid - 1] + stakes[mid]) / 2
+            : stakes[mid];
+      }
+    }
     res.target = m_core.get_blockchain_storage().get_difficulty_target();
     res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool_transactions_count(!restricted);
@@ -1948,6 +1968,68 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_staking_difficulty(const COMMAND_RPC_GET_STAKING_DIFFICULTY::request& req, COMMAND_RPC_GET_STAKING_DIFFICULTY::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_staking_difficulty);
+    CHECK_CORE_READY();
+
+    auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager();
+    if (!pos_manager)
+    {
+      res.status = "Failed, PoS manager unavailable";
+      return true;
+    }
+
+    std::string ignored_wide_difficulty;
+    uint64_t ignored_difficulty_top64 = 0;
+    store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.current_difficulty, ignored_wide_difficulty, ignored_difficulty_top64);
+    res.status = CORE_RPC_STATUS_OK;
+    res.minimum_validator_stake = pos::MIN_VALIDATOR_STAKE;
+
+    const auto active_validators = pos_manager->get_active_validators();
+    res.active_validator_count = active_validators.size();
+    res.median_stake = 0;
+    if (!active_validators.empty())
+    {
+      std::vector<uint64_t> stakes;
+      stakes.reserve(active_validators.size());
+      for (const auto &validator : active_validators)
+        stakes.push_back(validator.total_stake);
+      std::sort(stakes.begin(), stakes.end());
+      const size_t mid = stakes.size() / 2;
+      res.median_stake = stakes.size() % 2 == 0
+          ? (stakes[mid - 1] + stakes[mid]) / 2
+          : stakes[mid];
+    }
+
+    const uint64_t current_height = m_core.get_current_blockchain_height();
+    res.next_epoch_height = ((current_height / pos::EPOCH_LENGTH) + 1) * pos::EPOCH_LENGTH;
+
+    res.has_registered_stake = false;
+    res.your_stake_if_registered = 0;
+    if (!req.validator_pubkey.empty())
+    {
+      crypto::public_key validator_pubkey{};
+      if (!parse_public_key_hex(req.validator_pubkey, validator_pubkey))
+      {
+        res.status = "Failed, invalid validator_pubkey";
+        return true;
+      }
+
+      for (const auto &validator : active_validators)
+      {
+        if (validator.key == validator_pubkey)
+        {
+          res.has_registered_stake = true;
+          res.your_stake_if_registered = validator.total_stake;
+          break;
+        }
+      }
+    }
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(stop_mining);
@@ -1974,8 +2056,21 @@ namespace cryptonote
 
     const miner& lMiner = m_core.get_miner();
     res.active = lMiner.is_mining();
+    res.mining_enabled = false;
+    res.consensus = "Proof-of-Stake";
+    res.difficulty_explanation = "This is a PoS chain. Difficulty represents the minimum stake required to become a validator.";
     res.is_background_mining_enabled = lMiner.get_is_background_mining_enabled();
     store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
+    res.current_difficulty = res.difficulty;
+    if (auto *pos_manager = m_core.get_blockchain_storage().get_pos_manager())
+    {
+      const crypto::public_key next_validator = pos_manager->select_block_producer(m_core.get_current_blockchain_height());
+      res.next_validator_turn = epee::string_tools::pod_to_hex(next_validator);
+    }
+    else
+    {
+      res.next_validator_turn.clear();
+    }
     
     res.block_target = DIFFICULTY_TARGET_V2;
     if ( lMiner.is_mining() ) {
@@ -3297,6 +3392,17 @@ namespace cryptonote
   bool core_rpc_server::on_get_stake_status_json(const COMMAND_RPC_GET_STAKE_STATUS::request& req, COMMAND_RPC_GET_STAKE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     if (!on_get_stake_status(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = res.status;
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_staking_difficulty_json(const COMMAND_RPC_GET_STAKING_DIFFICULTY::request& req, COMMAND_RPC_GET_STAKING_DIFFICULTY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    if (!on_get_staking_difficulty(req, res, ctx) || res.status != CORE_RPC_STATUS_OK)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = res.status;

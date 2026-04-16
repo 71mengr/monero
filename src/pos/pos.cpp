@@ -273,4 +273,14 @@ uint64_t pos_manager::get_total_stake() const
   return sum;
 }
 
+uint64_t pos_manager::get_validator_stake(const crypto::public_key &validator_key) const
+{
+  const std::string key = key_to_string(validator_key);
+  const auto it = m_validators.find(key);
+  if (it == m_validators.end() || !it->second.is_active)
+    return 0;
+
+  return it->second.total_stake;
+}
+
 } // namespace pos

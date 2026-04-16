@@ -2060,7 +2060,7 @@ private:
     payment_container m_payments;
     serializable_unordered_map<crypto::key_image, size_t> m_key_images;
     serializable_unordered_map<crypto::public_key, size_t> m_pub_keys;
-    std::map<crypto::hash, std::vector<veo_output>> m_my_veos;
+    serializable_map<crypto::hash, std::vector<veo_output>> m_my_veos;
     cryptonote::account_public_address m_account_public_address;
     serializable_unordered_map<crypto::public_key, cryptonote::subaddress_index> m_subaddresses;
     std::vector<std::vector<std::string>> m_subaddress_labels;

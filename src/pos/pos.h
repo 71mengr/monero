@@ -61,6 +61,7 @@ public:
   const std::vector<crypto::public_key>& get_validator_order() const { return m_active_validator_order; }
   uint64_t get_next_turn_height(const crypto::public_key &validator_key, uint64_t current_height) const;
   uint64_t get_total_stake() const;
+  uint64_t get_validator_stake(const crypto::public_key &validator_key) const;
 
 private:
   static std::string key_to_string(const crypto::public_key &key);

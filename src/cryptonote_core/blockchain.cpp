@@ -107,6 +107,16 @@ constexpr size_t MASTERNODE_ACTIVE_SET_SIZE = 64;
 constexpr uint64_t MASTERNODE_ACTIVE_SET_MIN_COLLATERAL = MASTERNODE_COLLATERAL_EXACT_AMOUNT;
 constexpr uint64_t MASTERNODE_MIN_REMAINING_LOCK_BLOCKS = MASTERNODE_MIN_COLLATERAL_LOCK_BLOCKS / 2;
 constexpr uint64_t MASTERNODE_REWARD_ACTIVATION_DELAY_BLOCKS = CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE;
+constexpr uint64_t POS_DIFFICULTY_WEIGHT_SCALE = 1000000;
+
+cryptonote::difficulty_type stake_weighted_difficulty(uint64_t validator_stake, uint64_t total_stake)
+{
+  if (validator_stake == 0 || total_stake == 0)
+    return 1;
+
+  const cryptonote::difficulty_type weighted = (cryptonote::difficulty_type(validator_stake) * POS_DIFFICULTY_WEIGHT_SCALE) / total_stake;
+  return weighted > 0 ? weighted : 1;
+}
 
 bool get_mvm_contract_from_tx(
     const cryptonote::transaction& tx,
@@ -2587,33 +2597,43 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
     // Check the block's hash against the difficulty target for its alt chain.
     // VEO blocks run in PoS mode and skip PoW validation.
-    difficulty_type current_diff = pos_block ? 1 : get_next_difficulty_for_alternative_chain(alt_chain, bei);
+    difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
+    if (pos_block)
+    {
+      const uint64_t validator_stake = m_pos_manager ? m_pos_manager->get_validator_stake(b.validator_key) : 0;
+      const uint64_t total_stake = m_pos_manager ? m_pos_manager->get_total_stake() : 0;
+      current_diff = stake_weighted_difficulty(validator_stake, total_stake);
+    }
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
     crypto::hash proof_of_work;
     memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-    if (!pos_block && b.major_version >= RX_BLOCK_VERSION)
+    if (!pos_block)
     {
-      crypto::hash seedhash = null_hash;
-      uint64_t seedheight = rx_seedheight(bei.height);
-      // seedblock is on the alt chain somewhere
-      if (alt_chain.size() && alt_chain.front().height <= seedheight)
+      if (b.major_version >= RX_BLOCK_VERSION)
       {
-        for (auto it=alt_chain.begin(); it != alt_chain.end(); it++)
+        crypto::hash seedhash = null_hash;
+        uint64_t seedheight = rx_seedheight(bei.height);
+        // seedblock is on the alt chain somewhere
+        if (alt_chain.size() && alt_chain.front().height <= seedheight)
         {
-          if (it->height == seedheight+1)
+          for (auto it=alt_chain.begin(); it != alt_chain.end(); it++)
           {
-            seedhash = it->bl.prev_id;
-            break;
+            if (it->height == seedheight+1)
+            {
+              seedhash = it->bl.prev_id;
+              break;
+            }
           }
+        } else
+        {
+          seedhash = get_block_id_by_height(seedheight);
         }
-      } else
-      {
-        seedhash = get_block_id_by_height(seedheight);
+        get_altblock_longhash(bei.bl, proof_of_work, seedhash);
       }
-      get_altblock_longhash(bei.bl, proof_of_work, seedhash);
-    } else if (!pos_block)
-    {
-      get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
+      else
+      {
+        get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
+      }
     }
     if(!pos_block && !check_hash(proof_of_work, current_diff))
     {
@@ -4921,6 +4941,10 @@ leave:
       bvc.m_verifivation_failed = true;
       goto leave;
     }
+
+    const uint64_t validator_stake = m_pos_manager->get_validator_stake(expected_validator);
+    const uint64_t total_stake = m_pos_manager->get_total_stake();
+    current_diffic = stake_weighted_difficulty(validator_stake, total_stake);
 
     const bool signature_ok = m_pos_manager->verify_block_signature(id, bl.signature, expected_validator);
     MDEBUG("Block " << id << " PoS signature verification result: " << (signature_ok ? "ok" : "invalid"));

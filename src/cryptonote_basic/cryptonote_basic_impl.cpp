@@ -86,8 +86,19 @@ namespace cryptonote {
     const int target_minutes = target / 60;
     const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
 
-    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
-    if (base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)
+    uint64_t base_reward = 0;
+    if (already_generated_coins == 0)
+    {
+      // Block 0 uses a configured premine output. Treat it as emitted supply in
+      // reward accounting so subsequent blocks start from the premine-adjusted
+      // emission point.
+      base_reward = GENESIS_PREMINE_TOTAL;
+    }
+    else
+    {
+      base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
+    }
+    if (already_generated_coins != 0 && base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)
     {
       base_reward = FINAL_SUBSIDY_PER_MINUTE*target_minutes;
     }

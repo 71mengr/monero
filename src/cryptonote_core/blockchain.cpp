@@ -119,13 +119,27 @@ const crypto::public_key GENESIS_VALIDATOR_PUBLIC_KEY = [] {
   std::copy(std::begin(raw_key), std::end(raw_key), key.data);
   return key;
 }();
-constexpr uint64_t GENESIS_VALIDATOR_STAKE = 1000000 * COIN;
-constexpr uint32_t GENESIS_VALIDATOR_LOCK_BLOCKS = 14400;  // 5 days
+constexpr uint64_t GENESIS_LIQUID_STAKE = GENESIS_PREMINE_SPENDABLE;
+constexpr uint64_t GENESIS_VALIDATOR_STAKE = GENESIS_PREMINE_LOCKED;
+constexpr uint32_t GENESIS_VALIDATOR_LOCK_BLOCKS = (2ULL * 365ULL * 24ULL * 60ULL * 60ULL) / DIFFICULTY_TARGET_V2;  // 2 years
+static_assert(GENESIS_LIQUID_STAKE + GENESIS_VALIDATOR_STAKE == GENESIS_PREMINE_TOTAL, "genesis split must match configured premine");
 
 void configure_genesis_validator_block(cryptonote::block& bl)
 {
   bl.miner_tx.version = cryptonote::transaction::TXV_VEO;
+  bl.miner_tx.unlock_time = 0;
   bl.miner_tx.vout.clear();
+  bl.miner_tx.extra.clear();
+
+  cryptonote::tx_out liquid_out{};
+  liquid_out.amount = GENESIS_LIQUID_STAKE;
+  cryptonote::txout_to_veo liquid_target{};
+  liquid_target.amount = GENESIS_LIQUID_STAKE;
+  liquid_target.validator_key = GENESIS_VALIDATOR_PUBLIC_KEY;
+  liquid_target.lock_blocks = 0;
+  liquid_target.registered_height = 0;
+  liquid_out.target = liquid_target;
+  bl.miner_tx.vout.push_back(liquid_out);
 
   cryptonote::tx_out veo_out{};
   veo_out.amount = GENESIS_VALIDATOR_STAKE;
@@ -142,6 +156,12 @@ void configure_genesis_validator_block(cryptonote::block& bl)
   veo_commitment.validator_pubkey = GENESIS_VALIDATOR_PUBLIC_KEY;
   veo_commitment.lock_until_height = GENESIS_VALIDATOR_LOCK_BLOCKS;
   veo_commitment.eligibility_round = 0;
+  cryptonote::tx_extra_veo liquid_commitment{};
+  liquid_commitment.visible_amount = GENESIS_LIQUID_STAKE;
+  liquid_commitment.validator_pubkey = GENESIS_VALIDATOR_PUBLIC_KEY;
+  liquid_commitment.lock_until_height = 0;
+  liquid_commitment.eligibility_round = 0;
+  cryptonote::add_veo_to_tx_extra(bl.miner_tx.extra, liquid_commitment);
   cryptonote::add_veo_to_tx_extra(bl.miner_tx.extra, veo_commitment);
 
   bl.validator_key = GENESIS_VALIDATOR_PUBLIC_KEY;

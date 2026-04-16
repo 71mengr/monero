@@ -1213,6 +1213,7 @@ private:
     uint64_t unlocked_balance(uint32_t subaddr_index_major, bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
     uint64_t locked_balance(uint32_t subaddr_index_major, bool strict);
     uint64_t staked_balance() const;
+    const std::map<crypto::hash, std::vector<veo_output>> &get_my_veos() const { return m_my_veos; }
     // locked & unlocked balance per subaddress of given or current subaddress account
     std::map<uint32_t, uint64_t> balance_per_subaddress(uint32_t subaddr_index_major, bool strict) const;
     std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress(uint32_t subaddr_index_major, bool strict);

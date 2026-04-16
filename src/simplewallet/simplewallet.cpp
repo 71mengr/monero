@@ -211,6 +211,8 @@ namespace
   const char* USAGE_GET_VALIDATOR_LIST("get_validator_list");
   const char* USAGE_GET_STAKE_STATUS("get_stake_status");
   const char* USAGE_PRODUCE_BLOCK("produce_block <validator_pubkey_hex> <validator_secret_key_hex> <height>");
+  const char* USAGE_START_STAKING("start_staking <validator_pubkey_hex> <validator_secret_key_hex>");
+  const char* USAGE_STOP_STAKING("stop_staking");
   const char* USAGE_UNSTAKE("unstake <veo_txid> <output_index>");
   constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
@@ -1410,6 +1412,58 @@ bool simple_wallet::produce_block(const std::vector<std::string> &args)
   }
 
   success_msg_writer() << tr("Produced PoS block: ") << res.block_hash;
+  return true;
+}
+
+bool simple_wallet::start_staking(const std::vector<std::string> &args)
+{
+  if (args.size() != 2)
+  {
+    PRINT_USAGE(USAGE_START_STAKING);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  crypto::public_key validator_key{};
+  crypto::secret_key validator_secret_key{};
+  if (!epee::string_tools::hex_to_pod(args[0], validator_key))
+  {
+    fail_msg_writer() << tr("invalid validator pubkey");
+    return true;
+  }
+  if (!epee::string_tools::hex_to_pod(args[1], validator_secret_key))
+  {
+    fail_msg_writer() << tr("invalid validator secret key");
+    return true;
+  }
+
+  {
+    boost::lock_guard<boost::mutex> lock(m_auto_staking_mutex);
+    m_auto_staking_validator_key = validator_key;
+    m_auto_staking_validator_secret_key = validator_secret_key;
+    m_auto_staking_enabled = true;
+    m_auto_staking_last_attempt_height = std::numeric_limits<uint64_t>::max();
+  }
+
+  success_msg_writer() << tr("Background staking enabled");
+  return true;
+}
+
+bool simple_wallet::stop_staking(const std::vector<std::string> &args)
+{
+  if (!args.empty())
+  {
+    PRINT_USAGE(USAGE_STOP_STAKING);
+    return true;
+  }
+
+  {
+    boost::lock_guard<boost::mutex> lock(m_auto_staking_mutex);
+    m_auto_staking_enabled = false;
+  }
+
+  success_msg_writer() << tr("Background staking disabled");
   return true;
 }
 
@@ -4285,6 +4339,8 @@ simple_wallet::simple_wallet()
   , m_daemon_rpc_payment_message_displayed(false)
   , m_rpc_payment_hash_rate(-1.0f)
   , m_suspend_rpc_payment_mining(false)
+  , m_auto_staking_enabled(false)
+  , m_auto_staking_last_attempt_height(std::numeric_limits<uint64_t>::max())
 {
   m_cmd_binder.set_handler("start_mining",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::start_mining, _1),
@@ -4629,6 +4685,14 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::produce_block, _1),
                            tr(USAGE_PRODUCE_BLOCK),
                            tr("Produce a PoS block with validator pubkey, secret key, and target height."));
+  m_cmd_binder.set_handler("start_staking",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::start_staking, _1),
+                           tr(USAGE_START_STAKING),
+                           tr("Enable automatic background staking from this wallet session."));
+  m_cmd_binder.set_handler("stop_staking",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::stop_staking, _1),
+                           tr(USAGE_STOP_STAKING),
+                           tr("Disable automatic background staking."));
   m_cmd_binder.set_handler("unstake",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::unstake, _1),
                            tr(USAGE_UNSTAKE),
@@ -10364,6 +10428,7 @@ void simple_wallet::wallet_idle_thread()
       m_refresh_checker.do_call(boost::bind(&simple_wallet::check_refresh, this));
       m_mms_checker.do_call(boost::bind(&simple_wallet::check_mms, this));
       m_rpc_payment_checker.do_call(boost::bind(&simple_wallet::check_rpc_payment, this));
+      check_auto_staking();
 
       if (!m_idle_run.load(std::memory_order_relaxed))
         break;
@@ -10492,6 +10557,67 @@ bool simple_wallet::check_rpc_payment()
       m_cmd_binder.print_prompt();
     }
   }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::check_auto_staking()
+{
+  crypto::public_key validator_key{};
+  crypto::secret_key validator_secret_key{};
+  uint64_t last_attempt_height = std::numeric_limits<uint64_t>::max();
+  {
+    boost::lock_guard<boost::mutex> lock(m_auto_staking_mutex);
+    if (!m_auto_staking_enabled)
+      return true;
+    validator_key = m_auto_staking_validator_key;
+    validator_secret_key = m_auto_staking_validator_secret_key;
+    last_attempt_height = m_auto_staking_last_attempt_height;
+  }
+
+  if (!try_connect_to_daemon(true))
+    return true;
+
+  COMMAND_RPC_GET_INFO::request info_req{};
+  COMMAND_RPC_GET_INFO::response info_res{};
+  const bool info_ok = m_wallet->invoke_http_json("/get_info", info_req, info_res);
+  const std::string info_err = interpret_rpc_response(info_ok, info_res.status);
+  if (!info_err.empty())
+    return true;
+
+  const uint64_t current_height = info_res.height;
+  if (current_height == 0 || current_height == last_attempt_height)
+    return true;
+
+  COMMAND_RPC_GET_MY_TURN_INFO::request turn_req{};
+  COMMAND_RPC_GET_MY_TURN_INFO::response turn_res{};
+  turn_req.validator_key = epee::string_tools::pod_to_hex(validator_key);
+  const bool turn_ok = m_wallet->invoke_http_json("/get_my_turn_info", turn_req, turn_res);
+  const std::string turn_err = interpret_rpc_response(turn_ok, turn_res.status);
+  if (!turn_err.empty() || turn_res.next_turn_height != current_height)
+    return true;
+
+  COMMAND_RPC_PRODUCE_BLOCK::request produce_req{};
+  COMMAND_RPC_PRODUCE_BLOCK::response produce_res{};
+  produce_req.validator_key = turn_req.validator_key;
+  produce_req.validator_secret_key = epee::string_tools::pod_to_hex(unwrap(unwrap(validator_secret_key)));
+  produce_req.height = current_height;
+
+  const bool produce_ok = m_wallet->invoke_http_json("/produce_block", produce_req, produce_res);
+  const std::string produce_err = interpret_rpc_response(produce_ok, produce_res.status);
+
+  {
+    boost::lock_guard<boost::mutex> lock(m_auto_staking_mutex);
+    m_auto_staking_last_attempt_height = current_height;
+  }
+
+  if (!produce_err.empty())
+  {
+    LOG_PRINT_L1("Automatic staking skipped at height " << current_height << ": " << produce_err);
+    return true;
+  }
+
+  success_msg_writer() << tr("Background staker produced PoS block: ") << produce_res.block_hash;
+  m_cmd_binder.print_prompt();
   return true;
 }
 //----------------------------------------------------------------------------------------------------

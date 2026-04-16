@@ -119,7 +119,7 @@ const crypto::public_key GENESIS_VALIDATOR_PUBLIC_KEY = [] {
   std::copy(std::begin(raw_key), std::end(raw_key), key.data);
   return key;
 }();
-constexpr uint64_t GENESIS_VALIDATOR_STAKE = 1000000;
+constexpr uint64_t GENESIS_VALIDATOR_STAKE = 1000000 * COIN;
 constexpr uint32_t GENESIS_VALIDATOR_LOCK_BLOCKS = 14400;  // 5 days
 
 void configure_genesis_validator_block(cryptonote::block& bl)

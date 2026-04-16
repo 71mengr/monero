@@ -234,6 +234,8 @@ namespace cryptonote
     bool get_validator_list(const std::vector<std::string> &args);
     bool get_stake_status(const std::vector<std::string> &args);
     bool produce_block(const std::vector<std::string> &args);
+    bool start_staking(const std::vector<std::string> &args);
+    bool stop_staking(const std::vector<std::string> &args);
     bool mvm_create_contract(const std::vector<std::string> &args);
     bool mvm_create_token(const std::vector<std::string> &args);
     bool mvm_mint_token(const std::vector<std::string> &args);
@@ -351,6 +353,7 @@ namespace cryptonote
     bool check_refresh();
     bool check_mms();
     bool check_rpc_payment();
+    bool check_auto_staking();
 
     void handle_transfer_exception(const std::exception_ptr &e, bool trusted_daemon);
 
@@ -479,6 +482,12 @@ namespace cryptonote
     bool m_daemon_rpc_payment_message_displayed;
     float m_rpc_payment_hash_rate;
     std::atomic<bool> m_suspend_rpc_payment_mining;
+
+    boost::mutex m_auto_staking_mutex;
+    bool m_auto_staking_enabled;
+    crypto::public_key m_auto_staking_validator_key;
+    crypto::secret_key m_auto_staking_validator_secret_key;
+    uint64_t m_auto_staking_last_attempt_height;
 
     std::unordered_map<std::string, uint32_t> m_claimed_cph;
     void print_mvm_token_balances_for_address(const std::string &token_address, const std::string &title, bool show_empty_state);

@@ -839,6 +839,43 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
   //-----------------------------------------------
+  struct COMMAND_RPC_GET_STAKING_DIFFICULTY
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string validator_pubkey;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(validator_pubkey)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      uint64_t current_difficulty;
+      uint64_t minimum_validator_stake;
+      uint64_t median_stake;
+      uint64_t active_validator_count;
+      uint64_t next_epoch_height;
+      bool has_registered_stake;
+      uint64_t your_stake_if_registered;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(current_difficulty)
+        KV_SERIALIZE(minimum_validator_stake)
+        KV_SERIALIZE(median_stake)
+        KV_SERIALIZE(active_validator_count)
+        KV_SERIALIZE(next_epoch_height)
+        KV_SERIALIZE(has_registered_stake)
+        KV_SERIALIZE(your_stake_if_registered)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+  //-----------------------------------------------
   struct COMMAND_RPC_PRODUCE_BLOCK
   {
     struct request_t: public rpc_request_base
@@ -977,6 +1014,9 @@ namespace cryptonote
       std::string version;
       bool synchronized;
       bool restricted;
+      std::string staking_difficulty_interpretation;
+      uint64_t median_stake;
+      uint64_t active_validators;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
@@ -1019,6 +1059,9 @@ namespace cryptonote
         KV_SERIALIZE(version)
         KV_SERIALIZE(synchronized)
         KV_SERIALIZE(restricted)
+        KV_SERIALIZE_OPT(staking_difficulty_interpretation, std::string{})
+        KV_SERIALIZE_OPT(median_stake, (uint64_t)0)
+        KV_SERIALIZE_OPT(active_validators, (uint64_t)0)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1107,6 +1150,11 @@ namespace cryptonote
       uint64_t difficulty;
       std::string wide_difficulty;
       uint64_t difficulty_top64;
+      bool mining_enabled;
+      std::string consensus;
+      std::string difficulty_explanation;
+      uint64_t current_difficulty;
+      std::string next_validator_turn;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
@@ -1125,6 +1173,11 @@ namespace cryptonote
         KV_SERIALIZE(difficulty)
         KV_SERIALIZE(wide_difficulty)
         KV_SERIALIZE(difficulty_top64)
+        KV_SERIALIZE_OPT(mining_enabled, false)
+        KV_SERIALIZE_OPT(consensus, std::string{})
+        KV_SERIALIZE_OPT(difficulty_explanation, std::string{})
+        KV_SERIALIZE_OPT(current_difficulty, (uint64_t)0)
+        KV_SERIALIZE_OPT(next_validator_turn, std::string{})
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

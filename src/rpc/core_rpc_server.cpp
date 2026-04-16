@@ -2071,7 +2071,7 @@ namespace cryptonote
     {
       res.next_validator_turn.clear();
     }
-    
+
     res.block_target = DIFFICULTY_TARGET_V2;
     if ( lMiner.is_mining() ) {
       res.speed = lMiner.get_speed();

@@ -206,10 +206,11 @@ namespace
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
   const char* USAGE_MASTERNODE_REGISTER("masternode_register [<collateral_amount>] <address> <amount>");
-  const char* USAGE_CREATE_VEO("create_veo <validator_pubkey_hex> <amount> <lock_until_height> [eligibility_round]");
+  const char* USAGE_CREATE_VEO("create_veo <validator_pubkey_hex> <amount> <lock_blocks>");
   const char* USAGE_DELEGATE("delegate <delegator_pubkey_hex> <validator_pubkey_hex> <amount> <lock_blocks>");
   const char* USAGE_GET_VALIDATOR_LIST("get_validator_list");
-  const char* USAGE_GET_STAKE_STATUS("get_stake_status <validator_pubkey_hex>");
+  const char* USAGE_GET_STAKE_STATUS("get_stake_status");
+  const char* USAGE_UNSTAKE("unstake <veo_txid> <output_index>");
   constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
   const char* USAGE_MVM_CREATE_TOKEN("mvm_create_token <bytecode|bytecode_file> <symbol> <name> <supply> <decimals> <address> <amount> [<salt>]");
@@ -1237,40 +1238,39 @@ bool simple_wallet::masternode_register(const std::vector<std::string> &args)
 
 bool simple_wallet::create_veo(const std::vector<std::string> &args)
 {
-  if (args.size() < 3 || args.size() > 4)
+  CHECK_IF_BACKGROUND_SYNCING("cannot create VEO");
+  if (args.size() != 3)
   {
     PRINT_USAGE(USAGE_CREATE_VEO);
     return true;
   }
-  if (!try_connect_to_daemon())
-    return true;
-
-  COMMAND_RPC_CREATE_VEO::request req = AUTO_VAL_INIT(req);
-  req.validator_pubkey = args[0];
-  if (!epee::string_tools::get_xtype_from_string(req.visible_amount, args[1]) ||
-      !epee::string_tools::get_xtype_from_string(req.lock_until_height, args[2]))
+  crypto::public_key validator_key{};
+  if (!epee::string_tools::hex_to_pod(args[0], validator_key))
   {
-    fail_msg_writer() << tr("invalid amount or lock_until_height");
+    fail_msg_writer() << tr("invalid validator pubkey");
     return true;
   }
-  req.eligibility_round = 0;
-  if (args.size() == 4 && !epee::string_tools::get_xtype_from_string(req.eligibility_round, args[3]))
+  uint64_t amount = 0;
+  uint32_t lock_blocks = 0;
+  if (!cryptonote::parse_amount(amount, args[1]) ||
+      !epee::string_tools::get_xtype_from_string(lock_blocks, args[2]))
   {
-    fail_msg_writer() << tr("invalid eligibility_round");
+    fail_msg_writer() << tr("invalid amount or lock_blocks");
     return true;
   }
 
-  COMMAND_RPC_CREATE_VEO::response res;
-  const bool ok = m_wallet->invoke_http_json("/create_veo", req, res);
-  const std::string err = interpret_rpc_response(ok, res.status);
-  if (!err.empty())
+  SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
+  try
   {
-    fail_msg_writer() << tr("create_veo failed: ") << err;
-    return true;
+    tools::wallet2::pending_tx ptx = m_wallet->create_veo_transaction({validator_key}, {amount}, lock_blocks);
+    m_wallet->commit_tx(ptx);
+    success_msg_writer() << tr("VEO validator registration tx submitted: ")
+      << epee::string_tools::pod_to_hex(cryptonote::get_transaction_hash(ptx.tx));
   }
-
-  success_msg_writer() << tr("VEO validator registration accepted");
-  success_msg_writer() << tr("tx_extra_veo payload: ") << res.tx_extra_hex;
+  catch (...)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+  }
   return true;
 }
 
@@ -1281,29 +1281,30 @@ bool simple_wallet::delegate_stake(const std::vector<std::string> &args)
     PRINT_USAGE(USAGE_DELEGATE);
     return true;
   }
-  if (!try_connect_to_daemon())
-    return true;
-
-  COMMAND_RPC_DELEGATE::request req = AUTO_VAL_INIT(req);
-  req.delegator_pubkey = args[0];
-  req.validator_pubkey = args[1];
-  if (!epee::string_tools::get_xtype_from_string(req.amount, args[2]) ||
-      !epee::string_tools::get_xtype_from_string(req.lock_blocks, args[3]))
+  crypto::public_key delegator_key{}, validator_key{};
+  uint64_t amount = 0;
+  uint32_t lock_blocks = 0;
+  if (!epee::string_tools::hex_to_pod(args[0], delegator_key) ||
+      !epee::string_tools::hex_to_pod(args[1], validator_key) ||
+      !cryptonote::parse_amount(amount, args[2]) ||
+      !epee::string_tools::get_xtype_from_string(lock_blocks, args[3]))
   {
-    fail_msg_writer() << tr("invalid amount or lock_blocks");
+    fail_msg_writer() << tr("invalid delegator/validator key, amount, or lock_blocks");
     return true;
   }
 
-  COMMAND_RPC_DELEGATE::response res;
-  const bool ok = m_wallet->invoke_http_json("/delegate", req, res);
-  const std::string err = interpret_rpc_response(ok, res.status);
-  if (!err.empty())
+  SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
+  try
   {
-    fail_msg_writer() << tr("delegate failed: ") << err;
-    return true;
+    tools::wallet2::pending_tx ptx = m_wallet->create_delegation_transaction(delegator_key, validator_key, amount, lock_blocks);
+    m_wallet->commit_tx(ptx);
+    success_msg_writer() << tr("Delegation tx submitted: ")
+      << epee::string_tools::pod_to_hex(cryptonote::get_transaction_hash(ptx.tx));
   }
-
-  success_msg_writer() << tr("Delegation accepted");
+  catch (...)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+  }
   return true;
 }
 
@@ -1341,38 +1342,25 @@ bool simple_wallet::get_validator_list(const std::vector<std::string> &args)
 
 bool simple_wallet::get_stake_status(const std::vector<std::string> &args)
 {
-  if (args.size() != 1)
+  if (!args.empty())
   {
     PRINT_USAGE(USAGE_GET_STAKE_STATUS);
     return true;
   }
-  if (!try_connect_to_daemon())
-    return true;
-
-  COMMAND_RPC_GET_STAKE_STATUS::request req;
-  req.validator_pubkey = args[0];
-  COMMAND_RPC_GET_STAKE_STATUS::response res;
-  const bool ok = m_wallet->invoke_http_json("/get_stake_status", req, res);
-  const std::string err = interpret_rpc_response(ok, res.status);
-  if (!err.empty())
+  message_writer() << tr("Staked balance: ") << print_money(m_wallet->staked_balance());
+  const auto &veos = m_wallet->get_my_veos();
+  for (const auto &entry: veos)
   {
-    fail_msg_writer() << tr("get_stake_status failed: ") << err;
-    return true;
+    for (const auto &veo: entry.second)
+    {
+      message_writer() << " - txid=" << epee::string_tools::pod_to_hex(entry.first)
+        << ", out=" << veo.m_output_index
+        << ", amount=" << print_money(veo.m_amount)
+        << ", lock_blocks=" << veo.m_lock_blocks
+        << ", unlock_height=" << veo.m_unlock_height
+        << ", type=" << (veo.m_is_delegate ? "delegate" : "veo");
+    }
   }
-
-  if (!res.found)
-  {
-    message_writer() << tr("Validator not found.");
-    return true;
-  }
-
-  success_msg_writer() << tr("Validator: ") << req.validator_pubkey;
-  message_writer() << tr("Total stake: ") << res.total_stake;
-  message_writer() << tr("Self stake: ") << res.self_stake;
-  message_writer() << tr("Delegated stake: ") << res.delegated_stake;
-  message_writer() << tr("Registered height: ") << res.registered_height;
-  message_writer() << tr("Last active height: ") << res.last_active_height;
-  message_writer() << tr("Active: ") << (res.is_active ? "yes" : "no");
   return true;
 }
 
@@ -1856,6 +1844,41 @@ bool simple_wallet::mvm_contracts(const std::vector<std::string> &args)
       << (boost::format("    txid       : %s") % epee::string_tools::pod_to_hex(entry.txid));
   }
 
+  return true;
+}
+
+bool simple_wallet::unstake(const std::vector<std::string> &args)
+{
+  CHECK_IF_BACKGROUND_SYNCING("cannot unstake");
+  if (args.size() != 2)
+  {
+    fail_msg_writer() << tr("usage: ") << tr(USAGE_UNSTAKE);
+    return true;
+  }
+
+  crypto::hash txid{};
+  if (!epee::string_tools::hex_to_pod(args[0], txid))
+  {
+    fail_msg_writer() << tr("invalid txid");
+    return true;
+  }
+  size_t output_index = 0;
+  if (!epee::string_tools::get_xtype_from_string(output_index, args[1]))
+  {
+    fail_msg_writer() << tr("invalid output index");
+    return true;
+  }
+
+  try
+  {
+    tools::wallet2::pending_tx ptx = m_wallet->unstake_veo(txid, output_index);
+    m_wallet->commit_tx(ptx);
+    success_msg_writer() << tr("unstake transaction submitted: ") << epee::string_tools::pod_to_hex(cryptonote::get_transaction_hash(ptx.tx));
+  }
+  catch (...)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+  }
   return true;
 }
 
@@ -4540,7 +4563,7 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("create_veo",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::create_veo, _1),
                            tr(USAGE_CREATE_VEO),
-                           tr("Register a validator by sending a tx_extra_veo payload to daemon PoS logic."));
+                           tr("Register a validator by creating and submitting a TXV_VEO transaction."));
   m_cmd_binder.set_handler("delegate",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::delegate_stake, _1),
                            tr(USAGE_DELEGATE),
@@ -4552,7 +4575,11 @@ simple_wallet::simple_wallet()
   m_cmd_binder.set_handler("get_stake_status",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_stake_status, _1),
                            tr(USAGE_GET_STAKE_STATUS),
-                           tr("Query stake status for one validator public key."));
+                           tr("Show staked balance and tracked active VEO/delegation outputs."));
+  m_cmd_binder.set_handler("unstake",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::unstake, _1),
+                           tr(USAGE_UNSTAKE),
+                           tr("Unstake a tracked VEO output by txid and output index once unlocked."));
   m_cmd_binder.set_handler("mvm_create_contract",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::mvm_create_contract, _1),
                            tr(USAGE_MVM_CREATE_CONTRACT),

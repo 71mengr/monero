@@ -239,6 +239,7 @@ namespace cryptonote
     bool mvm_transfer_token(const std::vector<std::string> &args);
     bool mvm_tokens(const std::vector<std::string> &args);
     bool mvm_contracts(const std::vector<std::string> &args);
+    bool unstake(const std::vector<std::string> &args);
     bool print_fee_info(const std::vector<std::string> &args);
     bool prepare_multisig(const std::vector<std::string>& args);
     bool prepare_multisig_main(const std::vector<std::string>& args, bool called_by_mms);

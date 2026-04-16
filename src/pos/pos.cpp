@@ -161,7 +161,7 @@ void pos_manager::update_validator_order(const crypto::hash &vrf_seed)
   });
 
   if (ranked.size() > MAX_ACTIVE_VALIDATORS)
-    ranked.resize(MAX_ACTIVE_VALIDATORS);
+    ranked.erase(ranked.begin() + MAX_ACTIVE_VALIDATORS, ranked.end());
 
   std::vector<crypto::public_key> ordered;
   ordered.reserve(ranked.size());

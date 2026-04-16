@@ -36,6 +36,7 @@
 #include <map>
 #include <unordered_set>
 #include <set>
+#include <boost/serialization/base_object.hpp>
 #include "serialization.h"
 
 template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::vector<T> &v);
@@ -82,6 +83,30 @@ template <template <bool> class Archive, class T> bool do_serialize(Archive<true
 
 template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::set<T> &v);
 template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::set<T> &v);
+
+namespace boost
+{
+  namespace serialization
+  {
+    template <class Archive, typename K, typename V>
+    void serialize(Archive &ar, serializable_unordered_map<K, V> &v, const unsigned int /*version*/)
+    {
+      ar & boost::serialization::base_object<std::unordered_map<K, V>>(v);
+    }
+
+    template <class Archive, typename K, typename V>
+    void serialize(Archive &ar, serializable_map<K, V> &v, const unsigned int /*version*/)
+    {
+      ar & boost::serialization::base_object<std::map<K, V>>(v);
+    }
+
+    template <class Archive, typename K, typename V>
+    void serialize(Archive &ar, serializable_unordered_multimap<K, V> &v, const unsigned int /*version*/)
+    {
+      ar & boost::serialization::base_object<std::unordered_multimap<K, V>>(v);
+    }
+  }
+}
 
 namespace serialization
 {

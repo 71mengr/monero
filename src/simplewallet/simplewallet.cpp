@@ -210,6 +210,7 @@ namespace
   const char* USAGE_DELEGATE("delegate <delegator_pubkey_hex> <validator_pubkey_hex> <amount> <lock_blocks>");
   const char* USAGE_GET_VALIDATOR_LIST("get_validator_list");
   const char* USAGE_GET_STAKE_STATUS("get_stake_status");
+  const char* USAGE_PRODUCE_BLOCK("produce_block <validator_pubkey_hex> <validator_secret_key_hex> <height>");
   const char* USAGE_UNSTAKE("unstake <veo_txid> <output_index>");
   constexpr uint64_t MASTERNODE_COLLATERAL_EXACT_AMOUNT = 1500000000000ULL;
   const char* USAGE_MVM_CREATE_CONTRACT("mvm_create_contract <bytecode|bytecode_file> [<salt>] [<address> <amount>]");
@@ -1361,6 +1362,54 @@ bool simple_wallet::get_stake_status(const std::vector<std::string> &args)
         << ", type=" << (veo.m_is_delegate ? "delegate" : "veo");
     }
   }
+  return true;
+}
+
+bool simple_wallet::produce_block(const std::vector<std::string> &args)
+{
+  if (args.size() != 3)
+  {
+    PRINT_USAGE(USAGE_PRODUCE_BLOCK);
+    return true;
+  }
+  if (!try_connect_to_daemon())
+    return true;
+
+  crypto::public_key validator_key{};
+  crypto::secret_key validator_secret_key{};
+  if (!epee::string_tools::hex_to_pod(args[0], validator_key))
+  {
+    fail_msg_writer() << tr("invalid validator pubkey");
+    return true;
+  }
+  if (!epee::string_tools::hex_to_pod(args[1], validator_secret_key))
+  {
+    fail_msg_writer() << tr("invalid validator secret key");
+    return true;
+  }
+
+  uint64_t height = 0;
+  if (!epee::string_tools::get_xtype_from_string(height, args[2]))
+  {
+    fail_msg_writer() << tr("invalid height");
+    return true;
+  }
+
+  COMMAND_RPC_PRODUCE_BLOCK::request req;
+  COMMAND_RPC_PRODUCE_BLOCK::response res;
+  req.validator_key = epee::string_tools::pod_to_hex(validator_key);
+  req.validator_secret_key = epee::string_tools::pod_to_hex(validator_secret_key);
+  req.height = height;
+
+  const bool ok = m_wallet->invoke_http_json("/produce_block", req, res);
+  const std::string err = interpret_rpc_response(ok, res.status);
+  if (!err.empty())
+  {
+    fail_msg_writer() << tr("produce_block failed: ") << err;
+    return true;
+  }
+
+  success_msg_writer() << tr("Produced PoS block: ") << res.block_hash;
   return true;
 }
 
@@ -4576,6 +4625,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_stake_status, _1),
                            tr(USAGE_GET_STAKE_STATUS),
                            tr("Show staked balance and tracked active VEO/delegation outputs."));
+  m_cmd_binder.set_handler("produce_block",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::produce_block, _1),
+                           tr(USAGE_PRODUCE_BLOCK),
+                           tr("Produce a PoS block with validator pubkey, secret key, and target height."));
   m_cmd_binder.set_handler("unstake",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::unstake, _1),
                            tr(USAGE_UNSTAKE),

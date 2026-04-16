@@ -852,7 +852,7 @@ bool tx_builder_ringct_t::init(
   const bool use_view_tags{view_tag_required(rct_config.bp_version)};
 
   // misc. fields
-  unsigned_tx.version = 2;  //rct = 2
+  unsigned_tx.version = cryptonote::transaction::TXV_RINGCT;  //rct = 2
   unsigned_tx.unlock_time = 0;
 
   // sort inputs

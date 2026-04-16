@@ -1012,9 +1012,9 @@ bool construct_miner_tx_manually(size_t height, uint64_t already_generated_coins
   tx.vout.push_back(out);
 
   if (hf_version >= HF_VERSION_DYNAMIC_FEE)
-    tx.version = 2;
+    tx.version = cryptonote::transaction::TXV_RINGCT;
   else
-    tx.version = 1;
+    tx.version = cryptonote::transaction::TXV_LEGACY;
   tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
 
   return true;

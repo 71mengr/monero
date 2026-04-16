@@ -1401,6 +1401,7 @@ bool simple_wallet::produce_block(const std::vector<std::string> &args)
   COMMAND_RPC_PRODUCE_BLOCK::response res;
   req.validator_key = epee::string_tools::pod_to_hex(validator_key);
   req.validator_secret_key = epee::string_tools::pod_to_hex(unwrap(unwrap(validator_secret_key)));
+  req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
   req.height = height;
 
   const bool ok = m_wallet->invoke_http_json("/produce_block", req, res);
@@ -10600,6 +10601,7 @@ bool simple_wallet::check_auto_staking()
   COMMAND_RPC_PRODUCE_BLOCK::response produce_res{};
   produce_req.validator_key = turn_req.validator_key;
   produce_req.validator_secret_key = epee::string_tools::pod_to_hex(unwrap(unwrap(validator_secret_key)));
+  produce_req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
   produce_req.height = current_height;
 
   const bool produce_ok = m_wallet->invoke_http_json("/produce_block", produce_req, produce_res);

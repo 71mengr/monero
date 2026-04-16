@@ -882,12 +882,14 @@ namespace cryptonote
     {
       std::string validator_key;
       std::string validator_secret_key;
+      std::string miner_address;
       uint64_t height;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(validator_key)
         KV_SERIALIZE(validator_secret_key)
+        KV_SERIALIZE_OPT(miner_address, std::string{})
         KV_SERIALIZE(height)
       END_KV_SERIALIZE_MAP()
     };

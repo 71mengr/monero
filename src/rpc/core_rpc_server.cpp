@@ -1855,10 +1855,31 @@ namespace cryptonote
       return true;
     }
 
+    cryptonote::address_parse_info miner_info{};
+    if (!get_account_address_from_str(miner_info, nettype(), req.miner_address))
+    {
+      res.status = "Failed, invalid miner address";
+      return true;
+    }
+
     block blk{};
-    blk.major_version = std::max<uint8_t>(m_core.get_blockchain_storage().get_current_hard_fork_version(), 1);
-    blk.minor_version = m_core.get_blockchain_storage().get_ideal_hard_fork_version();
     const crypto::hash prev_hash = m_core.get_blockchain_storage().get_tail_id();
+    cryptonote::difficulty_type diffic = 0;
+    uint64_t template_height = 0;
+    uint64_t expected_reward = 0;
+    uint64_t seed_height = 0;
+    crypto::hash seed_hash = crypto::null_hash;
+    if (!m_core.get_block_template(blk, &prev_hash, miner_info.address, diffic, template_height, expected_reward, blobdata{}, seed_height, seed_hash))
+    {
+      res.status = "Failed, unable to build block template";
+      return true;
+    }
+    if (req.height != template_height)
+    {
+      res.status = "Failed, requested height does not match next block height";
+      return true;
+    }
+
     if (!m_core.get_blockchain_storage().produce_pos_block(blk, validator_key, validator_secret_key, req.height, prev_hash))
     {
       res.status = "Failed, PoS block production failed";

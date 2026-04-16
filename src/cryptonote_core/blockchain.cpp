@@ -1492,7 +1492,32 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
 // less blocks than desired if there aren't enough.
 difficulty_type Blockchain::get_difficulty_for_next_block()
 {
-  return 1;
+  // In PoS, difficulty represents the minimum stake required to be eligible
+  // for block production at the current height.
+  if (!m_pos_manager)
+    return pos::MIN_VALIDATOR_STAKE;
+
+  auto validators = m_pos_manager->get_active_validators();
+  if (validators.empty())
+    return pos::MIN_VALIDATOR_STAKE;
+
+  std::sort(validators.begin(), validators.end(), [](const pos::validator_record& a, const pos::validator_record& b) {
+    return a.total_stake > b.total_stake;
+  });
+
+  const uint64_t min_stake_in_set = validators.back().total_stake;
+  const uint64_t median_stake = validators[validators.size() / 2].total_stake;
+
+  static uint64_t last_log_height = 0;
+  const uint64_t current_height = m_db->height();
+  if (current_height - last_log_height > pos::EPOCH_LENGTH)
+  {
+    LOG_PRINT_L0("Stake-Weighted Difficulty: " << min_stake_in_set
+      << " (min) / " << median_stake << " (median)");
+    last_log_height = current_height;
+  }
+
+  return min_stake_in_set > 0 ? min_stake_in_set : pos::MIN_VALIDATOR_STAKE;
 }
 //------------------------------------------------------------------
 std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const

@@ -2546,6 +2546,19 @@ namespace boost
     }
 
     template <class Archive>
+    inline void serialize(Archive& a, tools::wallet2::veo_output& x, const boost::serialization::version_type /* ver */)
+    {
+      a & x.m_amount;
+      a & x.m_lock_blocks;
+      a & x.m_unlock_height;
+      a & x.m_registered_height;
+      a & x.m_output_index;
+      a & x.m_is_delegate;
+      a & x.m_delegator_key;
+      a & x.m_validator_key;
+    }
+
+    template <class Archive>
     inline void serialize(Archive& a, tools::wallet2::address_book_row& x, const boost::serialization::version_type ver)
     {
       a & x.m_address;

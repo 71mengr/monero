@@ -5719,26 +5719,34 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
                                    const crypto::hash& prev_hash)
 {
   // Set basic block fields
-  blk.major_version = get_current_hard_fork_version();
-  blk.minor_version = get_ideal_hard_fork_version();
+  blk.major_version = m_hardfork->get_current_version();
+  blk.minor_version = m_hardfork->get_ideal_version();
   blk.timestamp = time(nullptr);
   blk.prev_id = prev_hash;
   blk.validator_key = validator_key;
   blk.nonce = 0;
+  blk.signature = crypto::signature{};
   
-  // Create miner transaction
-  blk.miner_tx.version = transaction::TXV_VEO;
-  blk.miner_tx.unlock_time = 0;
+  // Create miner transaction - CRITICAL: Initialize properly for RingCT/VEO
+  blk.miner_tx = transaction{};
+  blk.miner_tx.version = transaction::TXV_RINGCT;  // RingCT version (2), not TXV_VEO which is for outputs
+  blk.miner_tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
   blk.miner_tx.vin.clear();
   blk.miner_tx.vout.clear();
   blk.miner_tx.extra.clear();
+  blk.miner_tx.pruned = false;
   
+  // Initialize RCT signatures PROPERLY
+  blk.miner_tx.rct_signatures = rct::rctSig{};
+  blk.miner_tx.rct_signatures.type = rct::RCTTypeNull;  // Coinbase has null RCT
+  blk.miner_tx.rct_signatures.txnFee = 0;
+  
+  // Create coinbase input
   txin_gen in;
   in.height = height;
   blk.miner_tx.vin.push_back(in);
   
-  // Get validator stake and calculate reward
-  const uint64_t validator_stake = m_pos_manager->get_validator_stake(validator_key);
+  // Calculate block reward
   uint64_t reward = 0;
   const uint64_t already_generated_coins = height > 0 ? m_db->get_block_already_generated_coins(height - 1) : 0;
   if (!get_block_reward(m_current_block_cumul_weight_limit / 2, 1, already_generated_coins, reward, blk.major_version))
@@ -5747,28 +5755,56 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
     return false;
   }
   
-  // Create VEO output for the reward
-  cryptonote::tx_out veo_out{};
-  veo_out.amount = reward;
+  LOG_PRINT_L2("PoS block reward for height " << height << ": " << print_money(reward));
+  
+  // Create standard tx_out (not VEO - that's for the target type)
+  cryptonote::tx_out output{};
+  output.amount = reward;
+  
+  // Create VEO target for the output
   cryptonote::txout_to_veo veo_target{};
   veo_target.amount = reward;
   veo_target.validator_key = validator_key;
   veo_target.lock_blocks = 0;
   veo_target.registered_height = height;
-  veo_out.target = veo_target;
-  blk.miner_tx.vout.push_back(veo_out);
+  output.target = veo_target;
   
-  // Add VEO commitment to tx_extra
+  blk.miner_tx.vout.push_back(output);
+  LOG_PRINT_L2("Added output with VEO target: amount=" << print_money(reward) << ", validator_key=" << validator_key);
+  
+  // Add VEO commitment to tx_extra for proper serialization
   cryptonote::tx_extra_veo veo_commitment{};
   veo_commitment.visible_amount = reward;
   veo_commitment.validator_pubkey = validator_key;
   veo_commitment.lock_until_height = 0;
   veo_commitment.eligibility_round = height;
-  cryptonote::add_veo_to_tx_extra(blk.miner_tx.extra, veo_commitment);
+  
+  if (!cryptonote::add_veo_to_tx_extra(blk.miner_tx.extra, veo_commitment))
+  {
+    LOG_ERROR("Failed to add VEO commitment to tx_extra");
+    return false;
+  }
+  
+  LOG_PRINT_L2("Added VEO commitment to tx_extra, extra size=" << blk.miner_tx.extra.size());
+  
+  // Verify transaction structure
+  {
+    cryptonote::blobdata miner_tx_blob = cryptonote::tx_to_blob(blk.miner_tx);
+    LOG_PRINT_L2("Miner tx blob size: " << miner_tx_blob.size() << " bytes");
+    LOG_PRINT_L2("Miner tx hash: " << cryptonote::get_transaction_hash(blk.miner_tx));
+    LOG_PRINT_L2("TX version: " << (int)blk.miner_tx.version);
+    LOG_PRINT_L2("TX vin size: " << blk.miner_tx.vin.size());
+    LOG_PRINT_L2("TX vout size: " << blk.miner_tx.vout.size());
+    LOG_PRINT_L2("TX vout[0].amount: " << print_money(blk.miner_tx.vout[0].amount));
+    LOG_PRINT_L2("TX RCT type: " << (int)blk.miner_tx.rct_signatures.type);
+  }
+  
+  // Calculate block hash for signature
+  const crypto::hash signing_hash = get_block_hash(blk);
   
   // Sign the block
-  const crypto::hash signing_hash = get_block_hash(blk);
   crypto::generate_signature(signing_hash, validator_key, validator_secret_key, blk.signature);
+  LOG_PRINT_L2("Block signature generated for height " << height);
   
   // Add to blockchain
   block_verification_context bvc{};
@@ -5778,8 +5814,8 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   if (ok) {
     LOG_PRINT_L0("PoS block produced at height " << height << " by validator " << validator_key);
   } else {
-    LOG_ERROR("Failed to add PoS block:"
-      << " added_to_main_chain=" << bvc.m_added_to_main_chain
+    LOG_ERROR("Failed to add PoS block at height " << height 
+      << ": added_to_main_chain=" << bvc.m_added_to_main_chain
       << ", verification_failed=" << bvc.m_verifivation_failed
       << ", marked_as_orphaned=" << bvc.m_marked_as_orphaned
       << ", already_exists=" << bvc.m_already_exists

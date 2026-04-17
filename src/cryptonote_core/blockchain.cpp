@@ -2062,40 +2062,77 @@ bool Blockchain::check_pow(const block& blk, uint64_t height, const crypto::hash
 bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, uint8_t hf_version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
+  
   const bool is_pos_block = has_veo_commitment(b.miner_tx);
-  CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, false, "coinbase transaction in the block has no inputs");
-  CHECK_AND_ASSERT_MES(b.miner_tx.vin[0].type() == typeid(txin_gen), false, "coinbase transaction in the block has the wrong type");
+  
+  CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, false, 
+    "coinbase transaction in the block has no inputs");
+  CHECK_AND_ASSERT_MES(b.miner_tx.vin[0].type() == typeid(txin_gen), false,
+    "coinbase transaction in the block has the wrong type");
+  
   const bool is_genesis_coinbase = (height == 0);
-  CHECK_AND_ASSERT_MES(
-      is_pos_block || is_genesis_coinbase || b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX,
-      false,
+  
+  // For PoS blocks, allow TXV_VEO or TXV_RINGCT (legacy support)
+  // For PoW blocks, require proper versioning
+  if (is_pos_block)
+  {
+    // PoS blocks can have TXV_VEO or TXV_RINGCT
+    CHECK_AND_ASSERT_MES(b.miner_tx.version >= 2, false,
+      "PoS coinbase transaction must be version 2 or higher");
+  }
+  else if (!is_genesis_coinbase)
+  {
+    CHECK_AND_ASSERT_MES(b.miner_tx.version > 1 || hf_version < HF_VERSION_MIN_V2_COINBASE_TX, false,
       "Invalid coinbase transaction version");
+  }
 
-  // for v2 txes (ringct), we only accept empty rct signatures for miner transactions,
+  // For v2 txes (ringct), we only accept empty rct signatures for miner transactions
   if (hf_version >= HF_VERSION_REJECT_SIGS_IN_COINBASE && b.miner_tx.version >= 2)
   {
-    CHECK_AND_ASSERT_MES(b.miner_tx.rct_signatures.type == rct::RCTTypeNull, false, "RingCT signatures not allowed in coinbase transactions");
+    CHECK_AND_ASSERT_MES(b.miner_tx.rct_signatures.type == rct::RCTTypeNull, false,
+      "RingCT signatures not allowed in coinbase transactions");
   }
 
   if(boost::get<txin_gen>(b.miner_tx.vin[0]).height != height)
   {
-    MWARNING("The miner transaction in block has invalid height: " << boost::get<txin_gen>(b.miner_tx.vin[0]).height << ", expected: " << height);
+    MWARNING("The miner transaction in block has invalid height: " 
+      << boost::get<txin_gen>(b.miner_tx.vin[0]).height << ", expected: " << height);
     return false;
   }
+
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
+  
   const bool valid_unlock_time = is_pos_block
       ? (b.miner_tx.unlock_time == 0 || b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
       : (b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-  CHECK_AND_ASSERT_MES(valid_unlock_time, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW << " (or 0 for PoS)");
+  
+  CHECK_AND_ASSERT_MES(valid_unlock_time, false,
+    "coinbase transaction has the wrong unlock time=" << b.miner_tx.unlock_time 
+    << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
 
-  //check outs overflow
+  // Check output overflow
   if(!check_outs_overflow(b.miner_tx))
   {
     MERROR("miner transaction has money overflow in block " << get_block_hash(b));
     return false;
   }
 
-  CHECK_AND_ASSERT_MES(check_output_types(b.miner_tx, hf_version), false, "miner transaction has invalid output type(s) in block " << get_block_hash(b));
+  // CRITICAL: Check output types match the transaction version
+  CHECK_AND_ASSERT_MES(check_output_types(b.miner_tx, hf_version), false,
+    "miner transaction has invalid output type(s) in block " << get_block_hash(b));
+
+  // Additional check: if it's a PoS block, verify outputs have VEO targets
+  if (is_pos_block)
+  {
+    for (const auto& output : b.miner_tx.vout)
+    {
+      if (output.target.type() != typeid(txout_to_veo))
+      {
+        MERROR("PoS block miner transaction output is not txout_to_veo at height " << height);
+        return false;
+      }
+    }
+  }
 
   return true;
 }

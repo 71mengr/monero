@@ -5726,10 +5726,16 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   blk.validator_key = validator_key;
   blk.nonce = 0;
   
-  // ===== MISSING: Create miner transaction =====
-  blk.miner_tx.version = transaction::TXV_VEO;  // Use VEO version
+  // Create miner transaction
+  blk.miner_tx.version = transaction::TXV_VEO;
   blk.miner_tx.unlock_time = 0;
+  blk.miner_tx.vin.clear();
   blk.miner_tx.vout.clear();
+  blk.miner_tx.extra.clear();
+  
+  txin_gen in;
+  in.height = height;
+  blk.miner_tx.vin.push_back(in);
   
   // Get validator stake and calculate reward
   const uint64_t validator_stake = m_pos_manager->get_validator_stake(validator_key);
@@ -5747,7 +5753,7 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   cryptonote::txout_to_veo veo_target{};
   veo_target.amount = reward;
   veo_target.validator_key = validator_key;
-  veo_target.lock_blocks = validator_stake >= pos::MIN_VALIDATOR_STAKE ? 0 : CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+  veo_target.lock_blocks = 0;
   veo_target.registered_height = height;
   veo_out.target = veo_target;
   blk.miner_tx.vout.push_back(veo_out);
@@ -5760,9 +5766,7 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   veo_commitment.eligibility_round = height;
   cryptonote::add_veo_to_tx_extra(blk.miner_tx.extra, veo_commitment);
   
-  // ===== End missing section =====
-  
-  // Now sign the block
+  // Sign the block
   const crypto::hash signing_hash = get_block_hash(blk);
   crypto::generate_signature(signing_hash, validator_key, validator_secret_key, blk.signature);
   
@@ -5785,6 +5789,37 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   }
   
   return ok;
+}
+//------------------------------------------------------------------
+uint64_t Blockchain::get_total_coins(const crypto::hash& prev_hash) const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  try
+  {
+    uint64_t height = 0;
+    if (m_db->block_exists(prev_hash, &height))
+      return m_db->get_block_already_generated_coins(height);
+    return 0;
+  }
+  catch (const std::exception& e)
+  {
+    MERROR("Error getting total coins: " << e.what());
+    return 0;
+  }
+}
+
+size_t Blockchain::get_current_block_median_weight() const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  return m_current_block_cumul_weight_median;
+}
+
+crypto::public_key Blockchain::get_masternode_key_for_height(uint64_t height) const
+{
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  if (m_pos_manager)
+    return m_pos_manager->select_block_producer(height);
+  return crypto::null_pkey;
 }
 //------------------------------------------------------------------
 //TODO: Refactor, consider returning a failure height and letting

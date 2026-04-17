@@ -1200,6 +1200,26 @@ namespace cryptonote
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
 
+    /**
+     * @brief get total coins generated up to a given block
+     * @param prev_hash the block hash to calculate up to
+     * @return total coins generated
+     */
+    uint64_t get_total_coins(const crypto::hash& prev_hash) const;
+    
+    /**
+     * @brief get current block median weight
+     * @return the median weight
+     */
+    size_t get_current_block_median_weight() const;
+    
+    /**
+     * @brief get masternode key for a given height
+     * @param height the block height
+     * @return the public key
+     */
+    crypto::public_key get_masternode_key_for_height(uint64_t height) const;
+
     // main chain
     size_t m_current_block_cumul_weight_limit;
     size_t m_current_block_cumul_weight_median;

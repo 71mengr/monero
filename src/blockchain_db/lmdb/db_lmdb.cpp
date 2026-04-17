@@ -972,7 +972,7 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   if (result)
     throw0(DB_ERROR(lmdb_error("Failed to add tx data to db transaction: ", result).c_str()));
 
-  const cryptonote::blobdata_ref &blob = txp.second;
+  //const cryptonote::blobdata_ref &blob = txp.second;
 
   unsigned int unprunable_size = tx.unprunable_size;
   if (unprunable_size == 0)

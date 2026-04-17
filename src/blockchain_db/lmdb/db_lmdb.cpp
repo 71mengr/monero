@@ -264,13 +264,14 @@ inline void lmdb_db_open(MDB_txn* txn, const char* name, int flags, MDB_dbi& dbi
 
 
 }  // anonymous namespace
-
 #define CURSOR(name) \
-	if (!m_cur_ ## name) { \
-	  int result = mdb_cursor_open(*m_write_txn, m_ ## name, &m_cur_ ## name); \
-	  if (result) \
-        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
-	}
+		if (!m_cur_ ## name) { \
+		  if (!m_write_txn || !*m_write_txn) \
+	        throw0(DB_ERROR("Attempting to open a write cursor without an active LMDB write transaction")); \
+		  int result = mdb_cursor_open(*m_write_txn, m_ ## name, &m_cur_ ## name); \
+		  if (result) \
+	        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
+		}
 
 #define RCURSOR(name) \
 	if (!m_cur_ ## name) { \

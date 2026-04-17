@@ -5712,22 +5712,64 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
   }
 }
 //------------------------------------------------------------------
-bool Blockchain::produce_pos_block(cryptonote::block& blk, const crypto::public_key& validator_key, const crypto::secret_key& validator_secret_key, uint64_t height, const crypto::hash& prev_hash)
+bool Blockchain::produce_pos_block(cryptonote::block& blk, 
+                                   const crypto::public_key& validator_key,
+                                   const crypto::secret_key& validator_secret_key,
+                                   uint64_t height, 
+                                   const crypto::hash& prev_hash)
 {
-  blk.major_version = std::max<uint8_t>(blk.major_version, 1);
+  // Set basic block fields
+  blk.major_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
   blk.timestamp = time(nullptr);
   blk.prev_id = prev_hash;
   blk.validator_key = validator_key;
   blk.nonce = 0;
-  blk.signature = crypto::signature{};
+  
+  // ===== MISSING: Create miner transaction =====
+  blk.miner_tx.version = transaction::TXV_VEO;  // Use VEO version
+  blk.miner_tx.unlock_time = 0;
+  blk.miner_tx.vout.clear();
+  
+  // Get validator stake and calculate reward
+  uint64_t validator_stake = m_pos_manager->get_validator_stake(validator_key);
+  uint64_t reward = get_block_reward(height);  // Calculate appropriate reward
+  
+  // Create VEO output for the reward
+  cryptonote::tx_out veo_out{};
+  veo_out.amount = reward;
+  cryptonote::txout_to_veo veo_target{};
+  veo_target.amount = reward;
+  veo_target.validator_key = validator_key;
+  veo_target.lock_blocks = 0;  // Reward might not need locking
+  veo_target.registered_height = height;
+  veo_out.target = veo_target;
+  blk.miner_tx.vout.push_back(veo_out);
+  
+  // Add VEO commitment to tx_extra
+  cryptonote::tx_extra_veo veo_commitment{};
+  veo_commitment.visible_amount = reward;
+  veo_commitment.validator_pubkey = validator_key;
+  veo_commitment.lock_until_height = 0;
+  veo_commitment.eligibility_round = height;
+  cryptonote::add_veo_to_tx_extra(blk.miner_tx.extra, veo_commitment);
+  
+  // ===== End missing section =====
+  
+  // Now sign the block
   const crypto::hash signing_hash = get_block_hash(blk);
   crypto::generate_signature(signing_hash, validator_key, validator_secret_key, blk.signature);
-
+  
+  // Add to blockchain
   block_verification_context bvc{};
   pool_supplement ps{};
   const bool ok = add_new_block(blk, bvc, ps);
-  if (ok)
+  
+  if (ok) {
     LOG_PRINT_L0("PoS block produced at height " << height << " by validator " << validator_key);
+  } else {
+    LOG_ERROR("Failed to add PoS block: " << bvc.m_error_msg);
+  }
+  
   return ok;
 }
 //------------------------------------------------------------------

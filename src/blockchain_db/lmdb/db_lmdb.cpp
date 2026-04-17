@@ -895,6 +895,44 @@ void BlockchainLMDB::remove_block()
 uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& txp, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
+  // ADD THESE VALIDATION CHECKS
+  LOG_PRINT_L0("=== Validating transaction data ===");
+  LOG_PRINT_L0("tx_hash: " << tx_hash);
+  LOG_PRINT_L0("tx_prunable_hash: " << tx_prunable_hash);
+  
+  // Check txp pair validity
+  try {
+      const cryptonote::transaction &tx = txp.first;
+      LOG_PRINT_L0("tx.version: " << (int)tx.version);
+      LOG_PRINT_L0("tx.unlock_time: " << tx.unlock_time);
+      LOG_PRINT_L0("tx.vout size: " << tx.vout.size());
+      
+      for (size_t i = 0; i < tx.vout.size(); ++i) {
+          LOG_PRINT_L0("  vout[" << i << "].amount: " << tx.vout[i].amount);
+          LOG_PRINT_L0("  vout[" << i << "].target type: " << tx.vout[i].target.which());
+      }
+  } catch (const std::exception& e) {
+      LOG_ERROR("Exception accessing txp.first: " << e.what());
+      throw0(DB_ERROR("Corrupted transaction in txp.first"));
+  }
+  
+  const cryptonote::blobdata_ref &blob = txp.second;
+  LOG_PRINT_L0("blob size: " << blob.size());
+  
+  if (blob.size() > 0) {
+      const char* blob_data = blob.data();
+      if (!blob_data) {
+          LOG_ERROR("blob.data() is null but size is " << blob.size());
+          throw0(DB_ERROR("blob data pointer is null"));
+      }
+      LOG_PRINT_L0("blob.data() pointer: " << (void*)blob_data);
+      LOG_PRINT_L0("First few bytes: " << std::hex 
+                   << (int)(unsigned char)blob_data[0] << " "
+                   << (int)(unsigned char)blob_data[1] << " "
+                   << (int)(unsigned char)blob_data[2]);
+  }
+  
   check_open();
   mdb_txn_cursors *m_cursors = &m_wcursors;
   uint64_t m_height = height();

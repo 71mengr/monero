@@ -5719,7 +5719,8 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
                                    const crypto::hash& prev_hash)
 {
   // Set basic block fields
-  blk.major_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
+  blk.major_version = get_current_hard_fork_version();
+  blk.minor_version = get_ideal_hard_fork_version();
   blk.timestamp = time(nullptr);
   blk.prev_id = prev_hash;
   blk.validator_key = validator_key;
@@ -5731,8 +5732,14 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   blk.miner_tx.vout.clear();
   
   // Get validator stake and calculate reward
-  uint64_t validator_stake = m_pos_manager->get_validator_stake(validator_key);
-  uint64_t reward = get_block_reward(height);  // Calculate appropriate reward
+  const uint64_t validator_stake = m_pos_manager->get_validator_stake(validator_key);
+  uint64_t reward = 0;
+  const uint64_t already_generated_coins = height > 0 ? m_db->get_block_already_generated_coins(height - 1) : 0;
+  if (!get_block_reward(m_current_block_cumul_weight_limit / 2, 1, already_generated_coins, reward, blk.major_version))
+  {
+    LOG_ERROR("Failed to calculate PoS block reward for height " << height);
+    return false;
+  }
   
   // Create VEO output for the reward
   cryptonote::tx_out veo_out{};
@@ -5740,7 +5747,7 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   cryptonote::txout_to_veo veo_target{};
   veo_target.amount = reward;
   veo_target.validator_key = validator_key;
-  veo_target.lock_blocks = 0;  // Reward might not need locking
+  veo_target.lock_blocks = validator_stake >= pos::MIN_VALIDATOR_STAKE ? 0 : CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
   veo_target.registered_height = height;
   veo_out.target = veo_target;
   blk.miner_tx.vout.push_back(veo_out);
@@ -5767,7 +5774,14 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   if (ok) {
     LOG_PRINT_L0("PoS block produced at height " << height << " by validator " << validator_key);
   } else {
-    LOG_ERROR("Failed to add PoS block: " << bvc.m_error_msg);
+    LOG_ERROR("Failed to add PoS block:"
+      << " added_to_main_chain=" << bvc.m_added_to_main_chain
+      << ", verification_failed=" << bvc.m_verifivation_failed
+      << ", marked_as_orphaned=" << bvc.m_marked_as_orphaned
+      << ", already_exists=" << bvc.m_already_exists
+      << ", partial_block_reward=" << bvc.m_partial_block_reward
+      << ", bad_pow=" << bvc.m_bad_pow
+      << ", missing_txs=" << bvc.m_missing_txs);
   }
   
   return ok;

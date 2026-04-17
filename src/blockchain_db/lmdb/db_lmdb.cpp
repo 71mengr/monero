@@ -939,16 +939,17 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   // caller-managed blobdata_ref lifetime for LMDB writes.
   const cryptonote::blobdata blob = tx_to_blob(tx);
 
-  unsigned int unprunable_size = tx.unprunable_size;
-  if (unprunable_size == 0)
-  {
-    std::stringstream ss;
-    binary_archive<true> ba(ss);
-    bool r = const_cast<cryptonote::transaction&>(tx).serialize_base(ba);
-    if (!r)
-      throw0(DB_ERROR("Failed to serialize pruned tx"));
-    unprunable_size = ss.str().size();
-  }
+  // Do not trust tx.unprunable_size here: manually constructed transactions
+  // (for example locally produced PoS miner txs) may not have this field
+  // populated yet. Always recompute from serialized base to avoid invalid
+  // split offsets into the blob.
+  std::stringstream ss;
+  binary_archive<true> ba(ss);
+  const bool serialized = const_cast<cryptonote::transaction&>(tx).serialize_base(ba);
+  if (!serialized)
+    throw0(DB_ERROR("Failed to serialize unprunable tx prefix"));
+
+  const unsigned int unprunable_size = ss.str().size();
 
   if (unprunable_size > blob.size())
     throw0(DB_ERROR("pruned tx size is larger than tx size"));

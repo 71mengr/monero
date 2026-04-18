@@ -7151,7 +7151,11 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
       uint32_t daemon_rpc_version = 0;
       bool wallet_is_outdated = false, daemon_is_outdated = false;
       const bool has_daemon_connection = m_wallet->check_connection(&daemon_rpc_version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated);
-      if (wallet_is_outdated || daemon_is_outdated || (has_daemon_connection && ((daemon_rpc_version >> 16) != CORE_RPC_VERSION_MAJOR)))
+      if (!has_daemon_connection)
+      {
+        message_writer(console_color_red, false) << tr("Wallet is currently not connected to a daemon. Run \"set_daemon <host>:<port>\" then \"status\". Example: \"set_daemon 127.0.0.1:18081\" for a local mainnet daemon.");
+      }
+      else if (wallet_is_outdated || daemon_is_outdated || ((daemon_rpc_version >> 16) != CORE_RPC_VERSION_MAJOR))
       {
         message_writer(console_color_red, false) << tr("Detected a wallet/daemon version mismatch. If this started after a network upgrade (hardfork), update both wallet and daemon to the latest release, then retry refresh.");
       }

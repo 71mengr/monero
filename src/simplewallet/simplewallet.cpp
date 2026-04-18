@@ -5942,6 +5942,34 @@ bool simple_wallet::try_connect_to_daemon(bool silent, uint32_t* version)
   bool wallet_is_outdated = false, daemon_is_outdated = false;
   if (!m_wallet->check_connection(version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated))
   {
+    const std::string daemon_address = m_wallet->get_daemon_address();
+    epee::net_utils::http::url_content daemon_url{};
+    const bool parsed_daemon_address = epee::net_utils::parse_url(daemon_address, daemon_url);
+    const uint16_t p2p_default_port = get_config(m_wallet->nettype()).P2P_DEFAULT_PORT;
+    const uint16_t rpc_default_port = get_config(m_wallet->nettype()).RPC_DEFAULT_PORT;
+    if (!m_wallet->is_offline() && !wallet_is_outdated && !daemon_is_outdated && parsed_daemon_address &&
+        daemon_url.port == p2p_default_port && p2p_default_port != rpc_default_port)
+    {
+      const std::string rpc_daemon_address = daemon_url.schema + "://" + daemon_url.host + ":" + std::to_string(rpc_default_port) + daemon_url.uri;
+      if (!silent)
+      {
+        message_writer(console_color_yellow, true) << tr("Could not reach daemon RPC on the daemon's P2P port. Retrying on default RPC port: ") << rpc_daemon_address;
+      }
+      if (m_wallet->set_daemon(rpc_daemon_address, m_wallet->get_daemon_login(), m_wallet->is_trusted_daemon(),
+          epee::net_utils::ssl_support_t::e_ssl_support_autodetect, m_wallet->get_daemon_proxy()) &&
+          m_wallet->check_connection(version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated))
+      {
+        if (!silent)
+        {
+          success_msg_writer() << tr("Connected to daemon RPC after switching from the P2P port to the default RPC port.");
+        }
+        return true;
+      }
+      // keep wallet daemon settings unchanged if the retry failed
+      m_wallet->set_daemon(daemon_address, m_wallet->get_daemon_login(), m_wallet->is_trusted_daemon(),
+          epee::net_utils::ssl_support_t::e_ssl_support_autodetect, m_wallet->get_daemon_proxy());
+    }
+
     if (!silent)
     {
       if (m_wallet->is_offline())

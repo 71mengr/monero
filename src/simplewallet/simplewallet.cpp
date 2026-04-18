@@ -7074,6 +7074,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   bool received_money = false;
   bool ok = false;
   bool failed_to_get_blocks = false;
+  bool treated_as_empty_refresh = false;
   std::ostringstream ss;
   try
   {
@@ -7126,7 +7127,26 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   {
     LOG_ERROR("get blocks error: " << e.to_string());
     failed_to_get_blocks = true;
-    ss << tr("daemon did not return any blocks");
+    if (fetched_blocks == 0)
+    {
+      uint32_t daemon_rpc_version = 0;
+      bool wallet_is_outdated = false, daemon_is_outdated = false;
+      const bool has_daemon_connection = m_wallet->check_connection(&daemon_rpc_version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated);
+      if (has_daemon_connection && !wallet_is_outdated && !daemon_is_outdated && ((daemon_rpc_version >> 16) == CORE_RPC_VERSION_MAJOR))
+      {
+        treated_as_empty_refresh = true;
+        ok = true;
+        message_writer(console_color_yellow, false) << tr("Daemon returned no blocks for this refresh attempt. Continuing without new blocks.");
+      }
+      else
+      {
+        ss << tr("daemon did not return any blocks");
+      }
+    }
+    else
+    {
+      ss << tr("daemon did not return any blocks");
+    }
   }
   catch (const tools::error::refresh_error& e)
   {
@@ -7171,6 +7191,14 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
         message_writer(console_color_red, false) << tr("If this started after a network upgrade, check wallet/daemon compatibility: run \"version\" in the wallet and compare it with the daemon version, then update both to the latest release.");
       }
     }
+  }
+  else if (treated_as_empty_refresh)
+  {
+    success_msg_writer(true) << tr("Refresh done, blocks received: ") << fetched_blocks;
+    if (is_init)
+      print_accounts();
+    show_balance_unlocked();
+    on_refresh_finished(start_height, fetched_blocks, is_init, received_money);
   }
 
   // prevent it from triggering the idle screen due to waiting for a foreground refresh

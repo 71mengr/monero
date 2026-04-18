@@ -432,67 +432,117 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(
-    const CORE_SYNC_DATA& hshd,
-    cryptonote_connection_context& context,
-    bool is_initial)
-{
-  // Ignore duplicate handshakes
-  if (context.m_state == cryptonote_connection_context::state_before_handshake && !is_initial)
-    return true;
-  if (context.m_state == cryptonote_connection_context::state_synchronizing)
-    return true;
-
-  // Store remote peer info
-  context.m_remote_blockchain_height = hshd.current_height;
-  context.m_pruning_seed = hshd.pruning_seed;
-
-  // Accept any top_version from peers (bypass the strict HF check)
-  // In a small fork, version mismatches are expected during development.
-  // Remove this comment if you want to re-enable a relaxed version check later.
-
-  // If we already have the peer's top block, we are synchronized.
-  if (m_core.have_block(hshd.top_id))
+  bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_connection_context& context, bool is_inital)
   {
-    context.set_state_normal();
-    if (is_initial && hshd.current_height >= m_core.get_target_blockchain_height())
-      on_connection_synchronized();
-    return true;
-  }
+    if(context.m_state == cryptonote_connection_context::state_before_handshake && !is_inital)
+      return true;
 
-  // No chain sync over hidden networks (Tor/I2P) – keep this for safety.
-  if (context.m_remote_address.get_zone() != epee::net_utils::zone::public_)
-  {
-    context.set_state_normal();
-    return true;
-  }
+    if(context.m_state == cryptonote_connection_context::state_synchronizing)
+      return true;
 
-  // Update target height if peer is ahead
-  uint64_t target = m_core.get_target_blockchain_height();
-  if (target == 0)
-    target = m_core.get_current_blockchain_height();
+    // from v6, if the peer advertises a top block version, reject if it's not what it should be (will only work if no voting)
+    if (hshd.current_height > 0)
+    {
+      const uint8_t version = m_core.get_ideal_hard_fork_version(hshd.current_height - 1);
+      if (version >= 6 && version != hshd.top_version)
+      {
+        if (version < hshd.top_version && version == m_core.get_ideal_hard_fork_version())
+          MDEBUG(context << " peer claims higher version than we think (" <<
+              (unsigned)hshd.top_version << " for " << (hshd.current_height - 1) << " instead of " << (unsigned)version <<
+              ") - we may be forked from the network and a software upgrade may be needed, or that peer is broken or malicious");
+        return false;
+      }
+    }
 
-  if (hshd.current_height > target)
-  {
+    // reject weird pruning schemes
+    if (hshd.pruning_seed)
+    {
+      const uint32_t log_stripes = tools::get_pruning_log_stripes(hshd.pruning_seed);
+      if (log_stripes != CRYPTONOTE_PRUNING_LOG_STRIPES || tools::get_pruning_stripe(hshd.pruning_seed) > (1u << log_stripes))
+      {
+        MWARNING(context << " peer claim unexpected pruning seed " << epee::string_tools::to_string_hex(hshd.pruning_seed) << ", disconnecting");
+        return false;
+      }
+    }
+
+    if (hshd.current_height < context.m_remote_blockchain_height)
+    {
+      MINFO(context << "Claims " << hshd.current_height << ", claimed " << context.m_remote_blockchain_height << " before");
+      hit_score(context, 1);
+    }
+    context.m_remote_blockchain_height = hshd.current_height;
+    context.m_pruning_seed = hshd.pruning_seed;
+
+    uint64_t target = m_core.get_target_blockchain_height();
+    if (target == 0)
+      target = m_core.get_current_blockchain_height();
+
+    if(m_core.have_block(hshd.top_id))
+    {
+      context.set_state_normal();
+      if(is_inital  && hshd.current_height >= target && target == m_core.get_current_blockchain_height())
+        on_connection_synchronized();
+      return true;
+    }
+
+    // No chain synchronization over hidden networks (tor, i2p, etc.)
+    if(context.m_remote_address.get_zone() != epee::net_utils::zone::public_)
+    {
+      context.set_state_normal();
+      return true;
+    }
+
+    bool have_block = m_core.have_block(hshd.top_id);
+
+    if (!have_block && hshd.current_height > target)
+    {
+    const bool sync_was_inactive = (m_core.get_target_blockchain_height() == 0);
+    /* As I don't know if accessing hshd from core could be a good practice,
+    I prefer pushing target height to the core at the same time it is pushed to the user.
+    Nz. */
+    int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(curr_height);
+    uint64_t abs_diff = std::abs(diff);
+    uint64_t max_block_height = std::max(hshd.current_height, curr_height);
+    MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", context <<  "Sync data returned a new top block candidate: " << curr_height << " -> " << hshd.current_height
+      << " [Your node is " << abs_diff << " blocks (" << (abs_diff / (24 * 60 * 60 / DIFFICULTY_TARGET_V2)) << " days) "
+      << (0 <= diff ? std::string("behind") : std::string("ahead"))
+      << "] " << ENDL << "SYNCHRONIZATION started");
+      if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
+      {
+        m_core.safesyncmode(false);
+      }
+      if (sync_was_inactive) // only when sync starts
+      {
+        m_sync_timer.resume();
+        m_sync_timer.reset();
+        m_add_timer.pause();
+        m_add_timer.reset();
+        m_last_add_end_time = 0;
+        m_sync_spans_downloaded = 0;
+        m_sync_old_spans_downloaded = 0;
+        m_sync_bad_spans_downloaded = 0;
+        m_sync_download_chain_size = 0;
+        m_sync_download_objects_size = 0;
+      }
+    m_core.set_target_blockchain_height((hshd.current_height));
+    }
     MINFO(context << "Remote blockchain height: " << hshd.current_height << ", id: " << hshd.top_id);
-    m_core.set_target_blockchain_height(hshd.current_height);
-    m_core.safesyncmode(false);  // Allow faster sync
-  }
 
-  // If no-sync mode is on, don't request blocks.
-  if (m_no_sync)
-  {
-    context.set_state_normal();
+    if (m_no_sync)
+    {
+      context.set_state_normal();
+      return true;
+    }
+
+    context.m_state = cryptonote_connection_context::state_synchronizing;
+    //let the socket to send response to handshake, but request callback, to let send request data after response
+    LOG_PRINT_CCONTEXT_L2("requesting callback");
+    ++context.m_callback_request_count;
+    m_p2p->request_callback(context);
+    MLOG_PEER_STATE("requesting callback");
+    context.m_num_requested = 0;
     return true;
   }
-
-  // Enter synchronizing state and request block download callback
-  context.m_state = cryptonote_connection_context::state_synchronizing;
-  ++context.m_callback_request_count;
-  m_p2p->request_callback(context);
-  context.m_num_requested = 0;
-  return true;
-}
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::get_payload_sync_data(CORE_SYNC_DATA& hshd)

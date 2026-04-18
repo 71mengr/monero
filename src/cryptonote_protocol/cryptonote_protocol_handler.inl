@@ -493,6 +493,7 @@ namespace cryptonote
 
     if (hshd.current_height > target)
     {
+    const bool sync_was_inactive = (m_core.get_target_blockchain_height() == 0);
     /* As I don't know if accessing hshd from core could be a good practice,
     I prefer pushing target height to the core at the same time it is pushed to the user.
     Nz. */
@@ -501,15 +502,15 @@ namespace cryptonote
     uint64_t max_block_height = std::max(hshd.current_height,m_core.get_current_blockchain_height());
     uint64_t last_block_v1 = m_core.get_nettype() == TESTNET ? 2599999 : m_core.get_nettype() == MAINNET ? 3299999 : (uint64_t)-1;
     uint64_t diff_v2 = max_block_height > last_block_v1 ? std::min(abs_diff, max_block_height - last_block_v1) : 0;
-    MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, context <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << hshd.current_height
+    MCLOG((is_inital || sync_was_inactive) ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, context <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << hshd.current_height
       << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET_V2) << ") "
       << (0 <= diff ? std::string("behind") : std::string("ahead"))
-      << "] " << ENDL << "SYNCHRONIZATION started");
+      << "] " << ENDL << (sync_was_inactive ? "SYNCHRONIZATION started" : "SYNCHRONIZATION target updated"));
       if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
       {
         m_core.safesyncmode(false);
       }
-      if (m_core.get_target_blockchain_height() == 0) // only when sync starts
+      if (sync_was_inactive) // only when sync starts
       {
         m_sync_timer.resume();
         m_sync_timer.reset();
@@ -3031,7 +3032,9 @@ skip:
       m_core.set_target_blockchain_height(target);
       if (target == 0 && context.m_state > cryptonote_connection_context::state_before_handshake && !m_stopping)
       {
-        MCWARNING("global", "uzoqamd is now disconnected from the network");
+        const uint64_t public_connections = m_p2p->get_public_connections_count();
+        if (public_connections == 0)
+          MCWARNING("global", "uzoqamd is now disconnected from the network");
         m_ask_for_txpool_complement = true;
       }
     }

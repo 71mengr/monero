@@ -34,25 +34,28 @@
 const hardfork_t mainnet_hard_forks[] = {
   // version 1 from the start of the blockchain
   { 1, 0, 0, 1341378000 },
-  { 16, 5, 0, 1735689600 },     // 2025-01-01
+  // switch to PoS-era consensus immediately after genesis
+  { 16, 1, 0, 1735689600 },     // 2025-01-01
   { 17, 300, 0, 1735776000 },   // 2025-01-02
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
-const uint64_t mainnet_hard_fork_version_1_till = 4;
+const uint64_t mainnet_hard_fork_version_1_till = 0;
 
 const hardfork_t testnet_hard_forks[] = {
   // version 1 from the start of the blockchain
   { 1, 0, 0, 1341378000 },
-  { 16, 5, 0, 1785456000 },
+  // switch to PoS-era consensus immediately after genesis
+  { 16, 1, 0, 1785456000 },
   { 17, 300, 0, 1785456000 },
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
-const uint64_t testnet_hard_fork_version_1_till = 4;
+const uint64_t testnet_hard_fork_version_1_till = 0;
 
 const hardfork_t stagenet_hard_forks[] = {
   // version 1 from the start of the blockchain
   { 1, 0, 0, 1341378000 },
-  { 16, 5, 0, 1785456000 },
+  // switch to PoS-era consensus immediately after genesis
+  { 16, 1, 0, 1785456000 },
   { 17, 300, 0, 1785456000 },
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);

@@ -7145,6 +7145,10 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   if (!ok)
   {
     fail_msg_writer() << tr("refresh failed: ") << ss.str() << ". " << tr("Blocks received: ") << fetched_blocks;
+    if (fetched_blocks == 0 && ss.str().find("failed to get blocks") != std::string::npos)
+    {
+      message_writer(console_color_red, false) << tr("No blocks were received from the daemon. Check daemon address/login, run \"status\" to verify daemon height, or switch to another daemon.");
+    }
   }
 
   // prevent it from triggering the idle screen due to waiting for a foreground refresh

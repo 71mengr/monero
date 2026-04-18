@@ -7148,6 +7148,17 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     if (fetched_blocks == 0 && ss.str().find("failed to get blocks") != std::string::npos)
     {
       message_writer(console_color_red, false) << tr("No blocks were received from the daemon. Check daemon address/login, run \"status\" to verify daemon height, or switch to another daemon.");
+      uint32_t daemon_rpc_version = 0;
+      bool wallet_is_outdated = false, daemon_is_outdated = false;
+      const bool has_daemon_connection = m_wallet->check_connection(&daemon_rpc_version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated);
+      if (wallet_is_outdated || daemon_is_outdated || (has_daemon_connection && ((daemon_rpc_version >> 16) != CORE_RPC_VERSION_MAJOR)))
+      {
+        message_writer(console_color_red, false) << tr("Detected a wallet/daemon version mismatch. If this started after a network upgrade (hardfork), update both wallet and daemon to the latest release, then retry refresh.");
+      }
+      else
+      {
+        message_writer(console_color_red, false) << tr("If this started after a network upgrade, check wallet/daemon compatibility: run \"version\" in the wallet and compare it with the daemon version, then update both to the latest release.");
+      }
     }
   }
 

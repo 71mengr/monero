@@ -4371,10 +4371,19 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
       THROW_WALLET_EXCEPTION_IF(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
       throw;
     }
-    catch (const std::exception&)
+    catch (const std::exception& e)
     {
       blocks_fetched += added_blocks;
       THROW_WALLET_EXCEPTION_IF(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
+      const auto *get_blocks_error = dynamic_cast<const tools::error::get_blocks_error*>(&e);
+      if (get_blocks_error && blocks_fetched == 0)
+      {
+        uint32_t daemon_rpc_version = 0;
+        bool wallet_is_outdated = false, daemon_is_outdated = false;
+        const bool has_daemon_connection = check_connection(&daemon_rpc_version, NULL, 200000, &wallet_is_outdated, &daemon_is_outdated);
+        if (wallet_is_outdated || daemon_is_outdated || (has_daemon_connection && ((daemon_rpc_version >> 16) != CORE_RPC_VERSION_MAJOR)))
+          MWARNING("Refresh failed to fetch any blocks and version mismatch was detected (wallet/daemon may be out of date or incompatible after a network upgrade)");
+      }
       if(try_count < 3)
       {
         LOG_PRINT_L1("Another try pull_blocks (try_count=" << try_count << ")...");

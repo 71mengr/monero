@@ -46,6 +46,7 @@
 #include "common/util.h"
 #include "misc_log_ex.h"
 #include "cryptonote_core/bonded_validator_rules.h"
+#include "hardforks/hardforks.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.cn"
@@ -496,13 +497,42 @@ namespace cryptonote
     /* As I don't know if accessing hshd from core could be a good practice,
     I prefer pushing target height to the core at the same time it is pushed to the user.
     Nz. */
-    int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
-    uint64_t abs_diff = std::abs(diff);
-    uint64_t max_block_height = std::max(hshd.current_height,m_core.get_current_blockchain_height());
-    uint64_t last_block_v1 = m_core.get_nettype() == TESTNET ? 2599999 : m_core.get_nettype() == MAINNET ? 3299999 : (uint64_t)-1;
-    uint64_t diff_v2 = max_block_height > last_block_v1 ? std::min(abs_diff, max_block_height - last_block_v1) : 0;
+    const int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
+    const uint64_t abs_diff = std::abs(diff);
+    const uint64_t max_block_height = std::max(hshd.current_height, m_core.get_current_blockchain_height());
+    const auto get_last_v1_block = [this]() -> uint64_t
+    {
+      const hardfork_t* hard_forks = nullptr;
+      size_t num_hard_forks = 0;
+      switch (m_core.get_nettype())
+      {
+        case TESTNET:
+          hard_forks = testnet_hard_forks;
+          num_hard_forks = num_testnet_hard_forks;
+          break;
+        case STAGENET:
+          hard_forks = stagenet_hard_forks;
+          num_hard_forks = num_stagenet_hard_forks;
+          break;
+        default:
+          hard_forks = mainnet_hard_forks;
+          num_hard_forks = num_mainnet_hard_forks;
+          break;
+      }
+
+      for (size_t i = 0; i < num_hard_forks; ++i)
+      {
+        if (hard_forks[i].version > 1)
+          return hard_forks[i].height == 0 ? 0 : hard_forks[i].height - 1;
+      }
+      return (uint64_t)-1;
+    };
+    const uint64_t last_block_v1 = get_last_v1_block();
+    const uint64_t diff_v2 = max_block_height > last_block_v1 ? std::min(abs_diff, max_block_height - last_block_v1) : 0;
+    const uint64_t diff_v1 = abs_diff - diff_v2;
+    const uint64_t backlog_seconds = diff_v1 * DIFFICULTY_TARGET_V1 + diff_v2 * DIFFICULTY_TARGET_V2;
     MCLOG((is_inital || sync_was_inactive) ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, context <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << hshd.current_height
-      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET_V2) << ") "
+      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(backlog_seconds) << ") "
       << (0 <= diff ? std::string("behind") : std::string("ahead"))
       << "] " << ENDL << (sync_was_inactive ? "SYNCHRONIZATION started" : "SYNCHRONIZATION target updated"));
       if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks

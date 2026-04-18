@@ -2971,7 +2971,15 @@ skip:
   void t_cryptonote_protocol_handler<t_core>::on_connection_close(cryptonote_connection_context &context)
   {
     uint64_t target = 0;
+    bool has_remaining_connections = false;
+    bool has_remaining_handshaking_connections = false;
     m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
+      if (cntxt.m_connection_id != context.m_connection_id)
+      {
+        has_remaining_connections = true;
+        if (cntxt.m_state == cryptonote_connection_context::state_before_handshake)
+          has_remaining_handshaking_connections = true;
+      }
       if (cntxt.m_state >= cryptonote_connection_context::state_synchronizing && cntxt.m_connection_id != context.m_connection_id)
         target = std::max(target, cntxt.m_remote_blockchain_height);
       return true;
@@ -2980,8 +2988,15 @@ skip:
     if (target < previous_target)
     {
       MINFO("Target height decreasing from " << previous_target << " to " << target);
-      m_core.set_target_blockchain_height(target);
-      if (target == 0 && context.m_state > cryptonote_connection_context::state_before_handshake && !m_stopping)
+      if (target == 0 && has_remaining_handshaking_connections)
+      {
+        MDEBUG("Keeping previous target height " << previous_target << " while waiting for remaining connections to finish handshaking");
+      }
+      else
+      {
+        m_core.set_target_blockchain_height(target);
+      }
+      if (target == 0 && !has_remaining_connections && context.m_state > cryptonote_connection_context::state_before_handshake && !m_stopping)
       {
         const uint64_t public_connections = m_p2p->get_public_connections_count();
         if (public_connections == 0)

@@ -436,8 +436,7 @@ namespace cryptonote
     if(context.m_state == cryptonote_connection_context::state_before_handshake && !is_inital)
       return true;
 
-    if(context.m_state == cryptonote_connection_context::state_synchronizing)
-      return true;
+    const bool already_synchronizing = context.m_state == cryptonote_connection_context::state_synchronizing;
 
     // from v6, if the peer advertises a top block version, reject if it's not what it should be (will only work if no voting)
     if (hshd.current_height > 0)
@@ -532,6 +531,9 @@ namespace cryptonote
       context.set_state_normal();
       return true;
     }
+
+    if (already_synchronizing)
+      return true;
 
     context.m_state = cryptonote_connection_context::state_synchronizing;
     //let the socket to send response to handshake, but request callback, to let send request data after response

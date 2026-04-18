@@ -3524,8 +3524,13 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
   refresh(trusted_daemon, start_height, blocks_fetched, received_money);
 }
 //----------------------------------------------------------------------------------------------------
-void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_version, uint64_t height, bool &wallet_is_outdated, bool &daemon_is_outdated)
+void check_block_hard_fork_version(cryptonote::network_type nettype, 
+                                    uint8_t hf_version, 
+                                    uint64_t height, 
+                                    bool &wallet_is_outdated, 
+                                    bool &daemon_is_outdated)
 {
+  // Use hard fork tables
   const size_t wallet_num_hard_forks = nettype == TESTNET ? num_testnet_hard_forks
     : nettype == STAGENET ? num_stagenet_hard_forks : num_mainnet_hard_forks;
   const hardfork_t *wallet_hard_forks = nettype == TESTNET ? testnet_hard_forks
@@ -3534,28 +3539,70 @@ void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_
   if (wallet_num_hard_forks == 0)
   {
     wallet_is_outdated = true;
+    daemon_is_outdated = false;
     return;
   }
 
+  // Find hard fork entry matching the version
   const auto it = std::find_if(wallet_hard_forks, wallet_hard_forks + wallet_num_hard_forks,
     [hf_version](const hardfork_t &hf) { return hf.version == hf_version; });
 
   if (it == wallet_hard_forks + wallet_num_hard_forks)
   {
-    wallet_is_outdated = hf_version > wallet_hard_forks[wallet_num_hard_forks - 1].version;
+    // Version not found in YOUR fork schedule
+    const uint8_t latest_known_version = wallet_hard_forks[wallet_num_hard_forks - 1].version;
+    wallet_is_outdated = hf_version > latest_known_version;
     daemon_is_outdated = !wallet_is_outdated;
     return;
   }
 
   wallet_is_outdated = false;
-  // check block's height falls within wallet's expected range for block's given version
+  
+  // Check if the block's height falls
   const size_t fork_index = static_cast<size_t>(it - wallet_hard_forks);
   uint64_t start_height = fork_index == 0 ? 0 : wallet_hard_forks[fork_index].height;
   uint64_t end_height = fork_index + 1 >= wallet_num_hard_forks
     ? std::numeric_limits<uint64_t>::max()
     : wallet_hard_forks[fork_index + 1].height;
 
-  daemon_is_outdated = height < start_height || height >= end_height;
+  daemon_is_outdated = (height < start_height || height >= end_height);
+  
+  LOG_PRINT_L3("HF check: version=" << (int)hf_version 
+               << " height=" << height 
+               << " range=[" << start_height << "," << end_height << "]"
+               << " daemon_outdated=" << daemon_is_outdated);
+}
+//--------------------------------------------------------------------------------------------------
+uint8_t wallet2::get_hard_fork_version_at_height(uint64_t height) const
+{
+  const hardfork_t* hard_forks;
+  size_t num_forks;
+  
+  switch (m_nettype) {
+    case TESTNET:
+      hard_forks = testnet_hard_forks;
+      num_forks = num_testnet_hard_forks;
+      break;
+    case STAGENET:
+      hard_forks = stagenet_hard_forks;
+      num_forks = num_stagenet_hard_forks;
+      break;
+    default:
+      hard_forks = mainnet_hard_forks;
+      num_forks = num_mainnet_hard_forks;
+  }
+  
+  uint8_t version = 1; // default to version 1
+  
+  for (size_t i = 0; i < num_forks; i++) {
+    if (height >= hard_forks[i].height) {
+      version = hard_forks[i].version;
+    } else {
+      break;
+    }
+  }
+  
+  return version;
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::pull_and_parse_next_blocks(bool first, bool try_incremental, uint64_t start_height, uint64_t &blocks_start_height, std::list<crypto::hash> &short_chain_history, const std::vector<cryptonote::block_complete_entry> &prev_blocks, const std::vector<parsed_block> &prev_parsed_blocks, std::vector<cryptonote::block_complete_entry> &blocks, std::vector<parsed_block> &parsed_blocks, bool &last, bool &error, std::exception_ptr &exception)
@@ -13968,23 +14015,84 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
   return target_height;
 }
 
+//---------------------------------------------------------------------------
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
-  // time of v2 fork
-  const time_t fork_time = m_nettype == TESTNET ? 1448285909 : m_nettype == STAGENET ? 1520937818 : 1458748658;
-  // v2 fork block
-  const uint64_t fork_block = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? 32000 : 1009827;
-  // avg seconds per block
-  const int seconds_per_block = DIFFICULTY_TARGET_V2;
-  // Calculated blockchain height
-  uint64_t approx_blockchain_height = fork_block + (time(NULL) - fork_time)/seconds_per_block;
-  // testnet and stagenet got some huge rollbacks, so the estimation is way off
-  static const uint64_t approximate_rolled_back_blocks = m_nettype == TESTNET ? 342100 : m_nettype == STAGENET ? 60000 : 30000;
-  if ((m_nettype == TESTNET || m_nettype == STAGENET) && approx_blockchain_height > approximate_rolled_back_blocks)
-    approx_blockchain_height -= approximate_rolled_back_blocks;
-  LOG_PRINT_L2("Calculated blockchain height: " << approx_blockchain_height);
-  return approx_blockchain_height;
+  const hardfork_t* hard_forks;
+  size_t num_forks;
+  
+  switch (m_nettype) {
+    case TESTNET:
+      hard_forks = testnet_hard_forks;
+      num_forks = num_testnet_hard_forks;
+      break;
+    case STAGENET:
+      hard_forks = stagenet_hard_forks;
+      num_forks = num_stagenet_hard_forks;
+      break;
+    default:
+      hard_forks = mainnet_hard_forks;
+      num_forks = num_mainnet_hard_forks;
+  }
+  
+  // If no fork data available, fall back to original calculation
+  if (num_forks == 0) {
+    const time_t fork_time = m_nettype == TESTNET ? 1448285909 : 
+                             m_nettype == STAGENET ? 1520937818 : 1458748658;
+    const uint64_t fork_block = m_nettype == TESTNET ? 624634 : 
+                                m_nettype == STAGENET ? 32000 : 1009827;
+    const int seconds_per_block = DIFFICULTY_TARGET_V2;
+    uint64_t approx_height = fork_block + (time(NULL) - fork_time) / seconds_per_block;
+    
+    static const uint64_t approximate_rolled_back_blocks = 
+      m_nettype == TESTNET ? 342100 : m_nettype == STAGENET ? 60000 : 30000;
+    if ((m_nettype == TESTNET || m_nettype == STAGENET) && 
+        approx_height > approximate_rolled_back_blocks) {
+      approx_height -= approximate_rolled_back_blocks;
+    }
+    
+    LOG_PRINT_L2("Calculated blockchain height (fallback): " << approx_height);
+    return approx_height;
+  }
+  
+  // Use latest hard fork for estimation
+  const hardfork_t& latest_fork = hard_forks[num_forks - 1];
+  const time_t current_time = time(NULL);
+  
+  // Find the most recent fork with valid time for accurate estimation
+  const hardfork_t* reference_fork = &latest_fork;
+  for (int i = num_forks - 1; i >= 0; i--) {
+    if (hard_forks[i].time > 0 && hard_forks[i].time < current_time) {
+      reference_fork = &hard_forks[i];
+      break;
+    }
+  }
+  
+  // Calculate approximate height
+  uint64_t approx_height = reference_fork->height;
+  
+  if (reference_fork->time > 0 && reference_fork->time < current_time) {
+    const uint64_t seconds_since_fork = current_time - reference_fork->time;
+    const uint64_t blocks_since_fork = seconds_since_fork / DIFFICULTY_TARGET_V2;
+    approx_height += blocks_since_fork;
+  }
+  
+  // Apply rollback correction for testnet/stagenet
+  static const uint64_t approximate_rolled_back_blocks = 
+    m_nettype == TESTNET ? 342100 : m_nettype == STAGENET ? 60000 : 30000;
+    
+  if ((m_nettype == TESTNET || m_nettype == STAGENET) && 
+      approx_height > approximate_rolled_back_blocks) {
+    approx_height -= approximate_rolled_back_blocks;
+  }
+  
+  LOG_PRINT_L2("Calculated blockchain height: " << approx_height 
+               << " using fork v" << (int)reference_fork->version 
+               << " at height " << reference_fork->height
+               << " with time " << reference_fork->time);
+  return approx_height;
 }
+//=======================================================================
 
 void wallet2::set_tx_note(const crypto::hash &txid, const std::string &note)
 {

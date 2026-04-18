@@ -7073,6 +7073,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   uint64_t fetched_blocks = 0;
   bool received_money = false;
   bool ok = false;
+  bool failed_to_get_blocks = false;
   std::ostringstream ss;
   try
   {
@@ -7121,6 +7122,12 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     LOG_ERROR("RPC error: " << e.to_string());
     ss << tr("RPC error: ") << e.what();
   }
+  catch (const tools::error::get_blocks_error& e)
+  {
+    LOG_ERROR("get blocks error: " << e.to_string());
+    failed_to_get_blocks = true;
+    ss << tr("daemon did not return any blocks");
+  }
   catch (const tools::error::refresh_error& e)
   {
     LOG_ERROR("refresh error: " << e.to_string());
@@ -7145,7 +7152,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   if (!ok)
   {
     fail_msg_writer() << tr("refresh failed: ") << ss.str() << ". " << tr("Blocks received: ") << fetched_blocks;
-    if (fetched_blocks == 0 && ss.str().find("failed to get blocks") != std::string::npos)
+    if (fetched_blocks == 0 && failed_to_get_blocks)
     {
       message_writer(console_color_red, false) << tr("No blocks were received from the daemon. Check daemon address/login, run \"status\" to verify daemon height, or switch to another daemon.");
       uint32_t daemon_rpc_version = 0;
@@ -7175,14 +7182,21 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
 bool simple_wallet::refresh(const std::vector<std::string>& args)
 {
   uint64_t start_height = 0;
-  if(!args.empty()){
+  if (args.size() > 1)
+  {
+    fail_msg_writer() << tr("usage: refresh [start-height]");
+    return true;
+  }
+  if (!args.empty())
+  {
     try
     {
-        start_height = boost::lexical_cast<uint64_t>( args[0] );
+      start_height = boost::lexical_cast<uint64_t>(args[0]);
     }
     catch(const boost::bad_lexical_cast &)
     {
-        start_height = 0;
+      fail_msg_writer() << tr("invalid start height: expected an unsigned integer");
+      return true;
     }
   }
   return refresh_main(start_height, ResetNone);

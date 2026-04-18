@@ -1499,6 +1499,13 @@ crypto::hash Blockchain::get_block_id_by_height(uint64_t height) const
   // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
   // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
   // lock if it is otherwise needed.
+  //
+  // Some callers may probe for heights that are not yet committed (for example while building
+  // templates around the current tip). Avoid throwing/logging from the DB path for that expected
+  // case and return null_hash directly.
+  if (height >= m_db->height())
+    return null_hash;
+
   try
   {
     return m_db->get_block_hash_from_height(height);

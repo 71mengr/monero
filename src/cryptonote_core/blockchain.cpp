@@ -5842,15 +5842,20 @@ bool Blockchain::produce_pos_block(cryptonote::block& blk,
   // Sign the block
   crypto::generate_signature(signing_hash, validator_key, validator_secret_key, blk.signature);
   LOG_PRINT_L2("Block signature generated for height " << height);
-  
+
+  m_db->batch_start();
+
   // Add to blockchain
   block_verification_context bvc{};
   pool_supplement ps{};
   const bool ok = add_new_block(blk, bvc, ps);
   
   if (ok) {
+    m_db->batch_stop();
     LOG_PRINT_L0("PoS block produced at height " << height << " by validator " << validator_key);
   } else {
+    m_db->batch_abort();
+
     LOG_ERROR("Failed to add PoS block at height " << height 
       << ": added_to_main_chain=" << bvc.m_added_to_main_chain
       << ", verification_failed=" << bvc.m_verifivation_failed

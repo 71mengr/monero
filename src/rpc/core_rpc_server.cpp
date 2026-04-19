@@ -523,6 +523,11 @@ namespace cryptonote
   {
     if(!ctx || !ctx->m_remote_address.is_blockable() || disable_rpc_ban)
       return false;
+    if (ctx->m_remote_address.is_loopback())
+    {
+      MDEBUG("Ignoring RPC fail score for loopback host " << ctx->m_remote_address.host_str());
+      return false;
+    }
 
     CRITICAL_REGION_LOCAL(m_host_fails_score_lock);
     uint64_t fails = m_host_fails_score[ctx->m_remote_address.host_str()] += score;

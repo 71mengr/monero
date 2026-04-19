@@ -247,7 +247,7 @@ namespace config
   boost::uuids::uuid const NETWORK_ID_V16 = { {
       0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x40
     } };
-  std::string const GENESIS_TX_V16 = "023d01ff0101feffffffffff0704feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b9700012b0701feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b97000100";
+  std::string const GENESIS_TX_V16 = "023d01ff0100feffffffffff0704feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b9700012b0701feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b97000100";
   boost::uuids::uuid const NETWORK_ID = NETWORK_ID_V16;
   std::string const GENESIS_TX = GENESIS_TX_V16;
   uint32_t const GENESIS_NONCE = 4009755871;

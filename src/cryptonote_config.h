@@ -43,8 +43,8 @@
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
 #define CURRENT_TRANSACTION_VERSION                     5
-#define CURRENT_BLOCK_MAJOR_VERSION                     1
-#define CURRENT_BLOCK_MINOR_VERSION                     1
+#define CURRENT_BLOCK_MAJOR_VERSION                     16
+#define CURRENT_BLOCK_MINOR_VERSION                     16
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*60*2
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
@@ -247,7 +247,7 @@ namespace config
   boost::uuids::uuid const NETWORK_ID_V16 = { {
       0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x40
     } };
-  std::string const GENESIS_TX_V16 = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd08807121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+  std::string const GENESIS_TX_V16 = "023d01ff0101feffffffffff0704feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b9700012b0701feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b97000100";
   boost::uuids::uuid const NETWORK_ID = NETWORK_ID_V16;
   std::string const GENESIS_TX = GENESIS_TX_V16;
   uint32_t const GENESIS_NONCE = 4009755871;

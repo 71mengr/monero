@@ -341,7 +341,7 @@ namespace cryptonote
       ADD_CHECKPOINT2(0, "76ee3cc98646292206cd3e86f74d88b4dcc1d937088645e9b0cbca84b7ce74eb", "0x1");
       return true;
     }
-    ADD_CHECKPOINT2(0,"4fa21c210a79a506d0ea9421ce2fc70b08654ec052ca62568a9b25a4082efeff", "0x1");
+    ADD_CHECKPOINT2(0,"1aedf911e2f160395555847aa361d028c2c7ac097c6bc7887fa90c4774472709", "0x1");
     return true;
   }
 

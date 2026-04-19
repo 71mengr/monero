@@ -244,12 +244,11 @@ namespace config
   uint16_t const P2P_DEFAULT_PORT = 3000;
   uint16_t const RPC_DEFAULT_PORT = 3001;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 11119;
-  boost::uuids::uuid const NETWORK_ID_V16 = { {
+  // Canonical mainnet identifiers and genesis tx source.
+  boost::uuids::uuid const NETWORK_ID = { {
       0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x40
     } };
-  std::string const GENESIS_TX_V16 = "023d01ff0100feffffffffff0704feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b9700012b0701feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b97000100";
-  boost::uuids::uuid const NETWORK_ID = NETWORK_ID_V16;
-  std::string const GENESIS_TX = GENESIS_TX_V16;
+  std::string const GENESIS_TX = "023d01ff0100feffffffffff0704feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b9700012b0701feffffffffff079d22afe78f67fc401f85a6e322babb5b3d0b1cfcf809c6bdb624252350d95b97000100";
   uint32_t const GENESIS_NONCE = 4009755871;
 
   // Hash domain separators
@@ -289,12 +288,10 @@ namespace config
     uint16_t const P2P_DEFAULT_PORT = 28080;
     uint16_t const RPC_DEFAULT_PORT = 28081;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
-    boost::uuids::uuid const NETWORK_ID_V16 = { {
+    boost::uuids::uuid const NETWORK_ID = { {
         0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x41
       } };
-    std::string const GENESIS_TX_V16 = "";
-    boost::uuids::uuid const NETWORK_ID = NETWORK_ID_V16;
-    std::string const GENESIS_TX = GENESIS_TX_V16;
+    std::string const GENESIS_TX = "";
     uint32_t const GENESIS_NONCE = 10001;
   }
 
@@ -306,12 +303,10 @@ namespace config
     uint16_t const P2P_DEFAULT_PORT = 38080;
     uint16_t const RPC_DEFAULT_PORT = 38081;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
-    boost::uuids::uuid const NETWORK_ID_V16 = { {
+    boost::uuids::uuid const NETWORK_ID = { {
         0x26 ,0x8F, 0x7D, 0xF3 , 0x8A, 0x95 , 0x4E, 0x1B, 0x9C, 0x22, 0x9A, 0xB1, 0x5F, 0x4D, 0x30, 0x42
       } };
-    std::string const GENESIS_TX_V16 = "013c01ff0001ffffffffffff0302df5d56da0c7d643ddd1ce61901c7bdc5fb1738bfe39fbe69c28a3a7032729c0f2101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
-    boost::uuids::uuid const NETWORK_ID = NETWORK_ID_V16;
-    std::string const GENESIS_TX = GENESIS_TX_V16;
+    std::string const GENESIS_TX = "013c01ff0001ffffffffffff0302df5d56da0c7d643ddd1ce61901c7bdc5fb1738bfe39fbe69c28a3a7032729c0f2101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
     uint32_t const GENESIS_NONCE = 10002;
   }
 }

@@ -30,7 +30,9 @@
 
 #include "string_tools.h"
 #include "blockchain_db.h"
+#include "cryptonote_config.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
 
@@ -453,9 +455,13 @@ void BlockchainDB::fixup()
   // The key images below are those from the inputs in those transactions.
   // On testnet, there are no such transactions
   // See commit 533acc30eda7792c802ea8b6417917fa99b8bc2b for the fix
-  static const char * const mainnet_genesis_hex = "418015bb9ae982a1975da7d79277c2705727a56894ba0fb246adaabb1f4632e3";
-  crypto::hash mainnet_genesis_hash;
-  epee::string_tools::hex_to_pod(mainnet_genesis_hex, mainnet_genesis_hash );
+  block mainnet_genesis_block;
+  if (!generate_genesis_block(mainnet_genesis_block, config::GENESIS_TX, config::GENESIS_NONCE))
+  {
+    MERROR("Failed to generate mainnet genesis block from configured GENESIS_TX; skipping mainnet-only fixup");
+    return;
+  }
+  const crypto::hash mainnet_genesis_hash = get_block_hash(mainnet_genesis_block);
   set_batch_transactions(true);
   batch_start();
 

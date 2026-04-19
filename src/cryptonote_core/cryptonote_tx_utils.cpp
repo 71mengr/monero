@@ -677,20 +677,8 @@ namespace cryptonote
     bool r = string_tools::parse_hexstr_to_binbuff(genesis_tx, tx_bl);
     if (!r || !parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx))
     {
-      MERROR("failed to parse coinbase tx from hard coded blob; constructing fallback genesis miner tx");
-      bl.miner_tx = transaction{};
-      bl.miner_tx.version = transaction::TXV_RINGCT;
-      bl.miner_tx.unlock_time = 0;
-      bl.miner_tx.vin.clear();
-      bl.miner_tx.vout.clear();
-      bl.miner_tx.extra.clear();
-      bl.miner_tx.pruned = false;
-      bl.miner_tx.rct_signatures = rct::rctSig{};
-      bl.miner_tx.rct_signatures.type = rct::RCTTypeNull;
-      bl.miner_tx.rct_signatures.txnFee = 0;
-      txin_gen in{};
-      in.height = 0;
-      bl.miner_tx.vin.push_back(in);
+      MERROR("failed to parse configured GENESIS_TX");
+      return false;
     }
     bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;

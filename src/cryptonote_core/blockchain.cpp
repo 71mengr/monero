@@ -653,7 +653,10 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
     MINFO("Blockchain not loaded, generating genesis block.");
     block bl;
     block_verification_context bvc = {};
-    generate_genesis_block(bl, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE);
+    CHECK_AND_ASSERT_MES(
+      generate_genesis_block(bl, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE),
+      false,
+      "Failed to generate genesis block from configured GENESIS_TX");
     configure_genesis_validator_block(bl);
     register_genesis_validator_if_needed(*m_pos_manager);
     db_wtxn_guard wtxn_guard(m_db);
